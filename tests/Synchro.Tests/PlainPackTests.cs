@@ -166,7 +166,7 @@ public class PlainPackTests
             var first = Pack(dir, FreshPlainStore());
 
             first.Value.Manifest.Files.Select(f => f.Path).ShouldBe(["a.txt"]);
-            first.Value.UpdatedState.SentFileHashes.ShouldNotContainKey("synchro-1.synchr");
+            first.Value.UpdatedState!.SentFileHashes.ShouldNotContainKey("synchro-1.synchr");
         }
         finally
         {

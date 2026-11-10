@@ -6,6 +6,7 @@ public sealed record SyncManifest
     public required string Channel { get; init; }
     public required SyncMode Mode { get; init; }
     public required Position? BasePosition { get; init; }
+    public Position? AckPosition { get; init; }
     public required Position NewPosition { get; init; }
     public required IReadOnlyList<FeatureDeclaration> Features { get; init; }
     public required IReadOnlyList<CommitInfo> Commits { get; init; }

@@ -101,15 +101,15 @@ public static class GitChangeService
         return new Result<IReadOnlyList<CommitInfo>>.Ok(commits);
     }
 
-    public static Result<byte[]> GetFileContent(string dir, string path)
+    public static Result<byte[]> GetFileContent(string dir, string path, string? sha = null)
     {
         try
         {
-            return new Result<byte[]>.Ok(GitRunner.RunBytes(dir, "show", $"HEAD:{path}"));
+            return new Result<byte[]>.Ok(GitRunner.RunBytes(dir, "show", $"{sha ?? "HEAD"}:{path}"));
         }
         catch (GitCommandException ex)
         {
-            return new Result<byte[]>.Fail(SyncError.Invalid($"cannot read '{path}' from HEAD: {ex.Message}"));
+            return new Result<byte[]>.Fail(SyncError.Invalid($"cannot read '{path}' from {sha ?? "HEAD"}: {ex.Message}"));
         }
     }
 

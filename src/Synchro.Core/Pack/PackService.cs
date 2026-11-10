@@ -96,6 +96,7 @@ public static class PackService
             Channel = state.Channel.Name,
             Mode = SyncMode.Git,
             BasePosition = baseSha is null ? null : new GitPosition(baseSha),
+            AckPosition = state.PeerHeadPosition is null ? null : new GitPosition(state.PeerHeadPosition),
             NewPosition = new GitPosition(headOk.Value),
             Features = [],
             Commits = logOk.Value,

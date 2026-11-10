@@ -76,6 +76,36 @@ public class StoreInitializerTests
     }
 
     [Fact]
+    public void Initialize_StorePathIsFile_FailsWithConflictInsteadOfCrash()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, ".synchro"), "not a store");
+
+            var outcome = StoreInitializer.Initialize(dir, new InitOptions());
+
+            var fail = outcome.ShouldBeOfType<Result<InitOutcome>.Fail>();
+            fail.Error.Code.ShouldBe("conflict");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Initialize_FilesystemRoot_FailsBeforeWriting()
+    {
+        var outcome = StoreInitializer.Initialize(
+            Path.DirectorySeparatorChar.ToString(), new InitOptions());
+
+        var fail = outcome.ShouldBeOfType<Result<InitOutcome>.Fail>();
+        fail.Error.Code.ShouldBe("invalid");
+        fail.Error.Message.ShouldContain("project directory");
+    }
+
+    [Fact]
     public void Initialize_AdoptedPeerKey_ProducesInteroperableStores()
     {
         var dirA = TempDir.Create();
@@ -88,7 +118,6 @@ public class StoreInitializerTests
             var sideB = StoreInitializer.Initialize(dirB, new InitOptions { KeyHex = keyHex, Peer = "khadgar" });
             var okB = sideB.ShouldBeOfType<Result<InitOutcome>.Ok>();
             okB.Value.KeyGenerated.ShouldBeFalse();
-            okB.Value.GeneratedKeyHex.ShouldBeNull();
 
             var stateA = StoreContainer.Load(StorePaths.Container(dirA), File.ReadAllBytes(StorePaths.Key(dirB)));
             stateA.ShouldBeOfType<Result<StoreState>.Ok>();
@@ -97,6 +126,27 @@ public class StoreInitializerTests
         {
             Directory.Delete(dirA, true);
             Directory.Delete(dirB, true);
+        }
+    }
+
+    [Fact]
+    public void Initialize_AdoptedKey_OutcomeCarriesNoHex()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var adopted = StoreInitializer.Initialize(dir, new InitOptions
+            {
+                KeyHex = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32))
+            });
+
+            var ok = adopted.ShouldBeOfType<Result<InitOutcome>.Ok>();
+            ok.Value.GeneratedKeyHex.ShouldBeNull();
+            ok.Value.KeyGenerated.ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
         }
     }
 
@@ -113,26 +163,6 @@ public class StoreInitializerTests
             var fail = outcome.ShouldBeOfType<Result<InitOutcome>.Fail>();
             fail.Error.Code.ShouldBe("invalid");
             fail.Error.Message.ShouldContain("hex");
-        }
-        finally
-        {
-            Directory.Delete(dir, true);
-        }
-    }
-
-    [Fact]
-    public void Initialize_GeneratedOutcome_PrintsKeyOnlyOnce()
-    {
-        var dir = TempDir.Create();
-        try
-        {
-            var adopted = StoreInitializer.Initialize(dir, new InitOptions
-            {
-                KeyHex = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32))
-            });
-
-            var ok = adopted.ShouldBeOfType<Result<InitOutcome>.Ok>();
-            ok.Value.GeneratedKeyHex.ShouldBeNull();
         }
         finally
         {

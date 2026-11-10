@@ -131,6 +131,27 @@ public class StoreContainerTests
     }
 
     [Fact]
+    public void Load_UnsupportedSchemaVersion_FailsCleanly()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var path = Path.Combine(dir, "container");
+            var future = SampleState() with { SchemaVersion = 99 };
+            StoreContainer.Save(path, Key, future);
+
+            var loaded = StoreContainer.Load(path, Key);
+
+            var fail = loaded.ShouldBeOfType<Result<StoreState>.Fail>();
+            fail.Error.Message.ShouldContain("schema version");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void Load_TruncatedContainer_ReturnsCleanFailure()
     {
         var dir = TempDir.Create();

@@ -26,10 +26,17 @@ public static class StoreInitializer
 
     public static Result<InitOutcome> Initialize(string root, InitOptions options)
     {
-        if (Directory.Exists(StorePaths.Folder(root)))
+        var folder = StorePaths.Folder(root);
+        if (Directory.Exists(folder) || File.Exists(folder))
+        {
+            return AlreadyInitialized();
+        }
+
+        var channel = options.ChannelName ?? new DirectoryInfo(root).Name;
+        if (string.IsNullOrWhiteSpace(channel) || channel == Path.DirectorySeparatorChar.ToString())
         {
             return new Result<InitOutcome>.Fail(
-                SyncError.Conflict($"store already initialized at '{StorePaths.FolderName}'"));
+                SyncError.Invalid("run init inside the project directory, not the filesystem root"));
         }
 
         byte[] key;
@@ -50,9 +57,19 @@ public static class StoreInitializer
                 SyncError.Invalid($"--key must be {KeyHexLength} hex characters ({KeySize} bytes)"));
         }
 
-        var mode = Directory.Exists(Path.Combine(root, ".git")) ? SyncMode.Git : SyncMode.Plain;
-        var channel = options.ChannelName ?? new DirectoryInfo(root).Name;
+        Directory.CreateDirectory(folder);
 
+        try
+        {
+            using var keyStream = new FileStream(StorePaths.Key(root), KeyFileOptions());
+            keyStream.Write(key);
+        }
+        catch (IOException)
+        {
+            return AlreadyInitialized();
+        }
+
+        var mode = Directory.Exists(Path.Combine(root, ".git")) ? SyncMode.Git : SyncMode.Plain;
         var state = new StoreState
         {
             SchemaVersion = 1,
@@ -62,9 +79,6 @@ public static class StoreInitializer
             AppliedContents = []
         };
 
-        Directory.CreateDirectory(StorePaths.Folder(root));
-        File.WriteAllBytes(StorePaths.Key(root), key);
-        RestrictKeyPermissions(StorePaths.Key(root));
         StoreContainer.Save(StorePaths.Container(root), key, state);
 
         var excluded = mode == SyncMode.Git ? GitHiding.EnsureExcluded(root) : [];
@@ -83,7 +97,7 @@ public static class StoreInitializer
     public static bool TryParseKeyHex(string hex, out byte[] key)
     {
         key = [];
-        if (hex.Length != KeyHexLength || !IsHex(hex))
+        if (hex.Length != KeyHexLength || !hex.All(Uri.IsHexDigit))
         {
             return false;
         }
@@ -105,13 +119,23 @@ public static class StoreInitializer
         return true;
     }
 
-    private static bool IsHex(string hex) => hex.All(c => Uri.IsHexDigit(c));
+    private static Result<InitOutcome> AlreadyInitialized() =>
+        new Result<InitOutcome>.Fail(SyncError.Conflict($"store already initialized at '{StorePaths.FolderName}'"));
 
-    private static void RestrictKeyPermissions(string path)
+    private static FileStreamOptions KeyFileOptions()
     {
+        var options = new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None
+        };
+
         if (!OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
         }
+
+        return options;
     }
 }

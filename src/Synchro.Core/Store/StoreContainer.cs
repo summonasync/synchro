@@ -9,10 +9,13 @@ public static class StoreContainer
 {
     private const int NonceSize = 12;
     private const int TagSize = 16;
+    private const int SchemaVersion = 1;
     private static readonly byte[] Aad = "synchro-store-v1"u8.ToArray();
 
     private static readonly JsonSerializerOptions JsonOptions = new();
 
+    // no magic header, no version bytes — the file is nonce||ciphertext||tag and must stay
+    // indistinguishable from random bytes; anyone "fixing" that back to a normal format breaks zero-trace
     public static void Save(string containerPath, byte[] key, StoreState state)
     {
         var payload = Compress(JsonSerializer.Serialize(state, JsonOptions));
@@ -20,13 +23,20 @@ public static class StoreContainer
         var ciphertext = new byte[payload.Length];
         var tag = new byte[TagSize];
 
-        using var aes = new AesGcm(key, TagSize);
-        aes.Encrypt(nonce, payload, ciphertext, tag, Aad);
+        using (var aes = new AesGcm(key, TagSize))
+        {
+            aes.Encrypt(nonce, payload, ciphertext, tag, Aad);
+        }
 
-        using var fs = File.Create(containerPath);
-        fs.Write(nonce);
-        fs.Write(ciphertext);
-        fs.Write(tag);
+        var tempPath = containerPath + ".tmp";
+        using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            fs.Write(nonce);
+            fs.Write(ciphertext);
+            fs.Write(tag);
+        }
+
+        File.Move(tempPath, containerPath, overwrite: true);
     }
 
     public static Result<StoreState> Load(string containerPath, byte[] key)
@@ -49,9 +59,18 @@ public static class StoreContainer
 
             var json = Decompress(payload);
             var state = JsonSerializer.Deserialize<StoreState>(json, JsonOptions);
-            return state is null
-                ? new Result<StoreState>.Fail(SyncError.Invalid("store container holds no state"))
-                : new Result<StoreState>.Ok(state);
+            if (state is null)
+            {
+                return new Result<StoreState>.Fail(SyncError.Invalid("store container holds no state"));
+            }
+
+            if (state.SchemaVersion != SchemaVersion)
+            {
+                return new Result<StoreState>.Fail(
+                    SyncError.Invalid($"unsupported store schema version {state.SchemaVersion}"));
+            }
+
+            return new Result<StoreState>.Ok(state);
         }
         catch (CryptographicException)
         {
@@ -64,6 +83,10 @@ public static class StoreContainer
         catch (IOException ex)
         {
             return new Result<StoreState>.Fail(SyncError.NotFound($"store container unreadable: {ex.Message}"));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new Result<StoreState>.Fail(SyncError.Invalid("store container access denied"));
         }
     }
 

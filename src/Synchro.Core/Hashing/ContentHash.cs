@@ -19,14 +19,8 @@ public static class ContentHash
         for (var i = 0; i < content.Length; i++)
         {
             var b = content[i];
-            if (b == (byte)'\r')
+            if (b == (byte)'\r' && i + 1 < content.Length && content[i + 1] == (byte)'\n')
             {
-                if (i + 1 < content.Length && content[i + 1] == (byte)'\n')
-                {
-                    continue;
-                }
-
-                output.Add((byte)'\n');
                 continue;
             }
 

@@ -12,10 +12,17 @@ public class ContentHashTests
     {
         var crlf = "first line\r\nsecond line\r\n"u8.ToArray();
         var lf = "first line\nsecond line\n"u8.ToArray();
-        var crOnly = "first line\rsecond line\r"u8.ToArray();
 
         ContentHash.Compute(crlf).ShouldBe(ContentHash.Compute(lf));
-        ContentHash.Compute(crlf).ShouldBe(ContentHash.Compute(crOnly));
+    }
+
+    [Fact]
+    public void Compute_LoneCrContent_DiffersFromLfContent()
+    {
+        var crOnly = "first line\rsecond line\r"u8.ToArray();
+        var lf = "first line\nsecond line\n"u8.ToArray();
+
+        ContentHash.Compute(crOnly).ShouldNotBe(ContentHash.Compute(lf));
     }
 
     [Fact]
@@ -30,12 +37,12 @@ public class ContentHashTests
     }
 
     [Fact]
-    public void Normalize_MixedLineEndings_YieldsLfOnly()
+    public void Normalize_MixedLineEndings_YieldsLfForCrlfOnly()
     {
         var mixed = "a\r\nb\rc\nd"u8.ToArray();
 
         var normalized = ContentHash.Normalize(mixed);
 
-        System.Text.Encoding.UTF8.GetString(normalized).ShouldBe("a\nb\nc\nd");
+        System.Text.Encoding.UTF8.GetString(normalized).ShouldBe("a\nb\rc\nd");
     }
 }

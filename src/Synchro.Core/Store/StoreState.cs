@@ -26,7 +26,7 @@ public sealed record StoreState
 {
     public required int SchemaVersion { get; init; }
     public required ChannelConfig Channel { get; init; }
-    public required List<LedgerEvent> Ledger { get; init; }
+    public required IReadOnlyList<LedgerEvent> Ledger { get; init; }
     public required Dictionary<string, string> AppliedFileHashes { get; init; }
     public required Dictionary<string, byte[]> AppliedContents { get; init; }
 }

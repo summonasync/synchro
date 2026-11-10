@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace Synchro.Tests;
@@ -18,9 +19,20 @@ public static class GitCli
             psi.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(psi)!;
-        var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+        Process process;
+        try
+        {
+            process = Process.Start(psi)!;
+        }
+        catch (Win32Exception ex)
+        {
+            throw new InvalidOperationException("git binary is required for these tests", ex);
+        }
+
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
         process.WaitForExit(10_000);
+        var output = stdout.GetAwaiter().GetResult() + stderr.GetAwaiter().GetResult();
         return (process.ExitCode, output);
     }
 

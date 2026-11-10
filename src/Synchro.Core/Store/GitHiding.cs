@@ -8,7 +8,9 @@ public static class GitHiding
     {
         var excludePath = Path.Combine(root, ".git", "info", "exclude");
         var existing = File.Exists(excludePath) ? File.ReadAllLines(excludePath) : [];
-        var missing = SynchroLines.Where(line => !existing.Contains(line)).ToArray();
+        var missing = SynchroLines
+            .Where(line => !existing.Any(e => e.Trim() == line))
+            .ToArray();
 
         if (missing.Length == 0)
         {

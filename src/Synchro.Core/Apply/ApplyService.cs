@@ -422,7 +422,7 @@ public static class ApplyService
         return conflicts;
     }
 
-    private static (StoreState Updated, List<string> Warnings) AdvanceState(
+    internal static (StoreState Updated, List<string> Warnings) AdvanceState(
         string root,
         StoreState state,
         SyncManifest manifest,
@@ -476,7 +476,7 @@ public static class ApplyService
         return (updated, warnings);
     }
 
-    private static Dictionary<string, byte[]> SnapshotContents(string root, IEnumerable<string> paths)
+    internal static Dictionary<string, byte[]> SnapshotContents(string root, IEnumerable<string> paths)
     {
         var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var path in paths)

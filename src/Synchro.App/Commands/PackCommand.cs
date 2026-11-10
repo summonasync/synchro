@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Synchro.Core;
+using Synchro.Core.Package;
 using Synchro.Core.Pack;
 using Synchro.Core.Store;
 
@@ -59,8 +60,38 @@ internal static class PackCommand
             return 1;
         }
 
-        var value = packOk.Value;
-        var manifest = value.Manifest;
+        return state.Value.Channel.Mode == SyncMode.Plain
+            ? WriteSealed(packOk.Value, key, outPath)
+            : WriteDraft(packOk.Value, root, outPath);
+    }
+
+    private static int WriteSealed(PackDraft draft, byte[] key, string? outPath)
+    {
+        var manifest = draft.Manifest;
+        var seq = manifest.NewPosition is ChainPosition chain ? chain.Seq : 0;
+        var target = outPath ?? $"synchro-{seq}.synchr";
+
+        PackageSealer.Seal(target, key, manifest);
+
+        if (draft.UpdatedState is { } updated)
+        {
+            StoreContainer.Save(StorePaths.Container(Directory.GetCurrentDirectory()), key, updated);
+        }
+
+        Console.WriteLine($"package sealed: {target} ({new FileInfo(target).Length} bytes)");
+        Console.WriteLine($"  chain: #{seq}, files: {manifest.Files.Count}, deletions: {manifest.Deletions.Count}");
+        Console.WriteLine("  bytes are neutral: no magic, no plaintext, no machine traces");
+        foreach (var warning in draft.Warnings)
+        {
+            Console.WriteLine($"  warning: {warning}");
+        }
+
+        return 0;
+    }
+
+    private static int WriteDraft(PackDraft draft, string root, string? outPath)
+    {
+        var manifest = draft.Manifest;
         var target = outPath ?? Path.Combine(root, StorePaths.FolderName, "last-pack-draft.json");
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
         File.WriteAllText(target, JsonSerializer.Serialize(manifest, DraftJsonOptions));
@@ -71,7 +102,7 @@ internal static class PackCommand
         Console.WriteLine($"  head: {manifest.NewPosition.Display}");
         Console.WriteLine($"  files: {manifest.Files.Count}, deletions: {manifest.Deletions.Count}, commits: {manifest.Commits.Count}");
         Console.WriteLine("  features: none declared yet (declare before sealing)");
-        foreach (var warning in value.Warnings)
+        foreach (var warning in draft.Warnings)
         {
             Console.WriteLine($"  warning: {warning}");
         }

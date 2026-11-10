@@ -31,4 +31,8 @@ public sealed record StoreState
     public required Dictionary<string, byte[]> AppliedContents { get; init; }
 
     public string? PeerKnownLocalPosition { get; init; }
+
+    public Dictionary<string, string> SentFileHashes { get; init; } = [];
+    public int SentChainSeq { get; init; }
+    public string? SentChainRootHash { get; init; }
 }

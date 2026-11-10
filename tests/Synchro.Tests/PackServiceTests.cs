@@ -130,28 +130,6 @@ public class PackServiceTests
     }
 
     [Fact]
-    public void Pack_PlainStore_FailsWithClearError()
-    {
-        var dir = TempDir.Create();
-        try
-        {
-            var state = GitStore() with
-            {
-                Channel = new ChannelConfig { Name = "plain", Peer = "shiva", Mode = SyncMode.Plain }
-            };
-
-            var result = PackService.Pack(dir, state, new PackOptions { Full = true });
-
-            var fail = result.ShouldBeOfType<Result<PackDraft>.Fail>();
-            fail.Error.Message.ShouldContain("git-mode");
-        }
-        finally
-        {
-            Directory.Delete(dir, true);
-        }
-    }
-
-    [Fact]
     public void Pack_NoPeerPositionWithoutFull_FailsWithGuidance()
     {
         var dir = TestGitRepo.Create();

@@ -13,18 +13,18 @@ public sealed record PackDraft
 {
     public required SyncManifest Manifest { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
+    public StoreState? UpdatedState { get; init; }
 }
 
 public static class PackService
 {
-    public static Result<PackDraft> Pack(string root, StoreState state, PackOptions options)
-    {
-        if (state.Channel.Mode != SyncMode.Git)
-        {
-            return new Result<PackDraft>.Fail(
-                SyncError.Invalid("pack requires a git-mode store — this directory was initialized without a repository"));
-        }
+    public static Result<PackDraft> Pack(string root, StoreState state, PackOptions options) =>
+        state.Channel.Mode == SyncMode.Git
+            ? PackGit(root, state, options)
+            : PackPlain(root, state);
 
+    private static Result<PackDraft> PackGit(string root, StoreState state, PackOptions options)
+    {
         var head = GitChangeService.GetHeadSha(root);
         if (head is not Result<string>.Ok headOk)
         {
@@ -82,21 +82,12 @@ public static class PackService
             warnings.Add("working tree has uncommitted changes — packing committed state only");
         }
 
-        var files = new List<PackageFileEntry>();
-        foreach (var path in changesOk.Value.Added.Concat(changesOk.Value.Modified).OrderBy(p => p, StringComparer.Ordinal))
+        var files = CollectFiles(
+            changesOk.Value.Added.Concat(changesOk.Value.Modified),
+            path => GitChangeService.GetFileContent(root, path));
+        if (files is not Result<List<PackageFileEntry>>.Ok filesOk)
         {
-            var content = GitChangeService.GetFileContent(root, path);
-            if (content is not Result<byte[]>.Ok contentOk)
-            {
-                return new Result<PackDraft>.Fail(((Result<byte[]>.Fail)content).Error);
-            }
-
-            files.Add(new PackageFileEntry
-            {
-                Path = path,
-                Hash = ContentHash.Compute(contentOk.Value),
-                Content = contentOk.Value
-            });
+            return new Result<PackDraft>.Fail(((Result<List<PackageFileEntry>>.Fail)files).Error);
         }
 
         var manifest = new SyncManifest
@@ -108,10 +99,102 @@ public static class PackService
             NewPosition = new GitPosition(headOk.Value),
             Features = [],
             Commits = logOk.Value,
-            Files = files,
+            Files = filesOk.Value,
             Deletions = [.. changesOk.Value.Deleted]
         };
 
         return new Result<PackDraft>.Ok(new PackDraft { Manifest = manifest, Warnings = warnings });
+    }
+
+    private static Result<PackDraft> PackPlain(string root, StoreState state)
+    {
+        var current = PlainTree.ComputeHashes(root);
+        var sent = state.SentFileHashes;
+
+        var changed = current
+            .Where(kvp => !sent.TryGetValue(kvp.Key, out var hash) || hash != kvp.Value)
+            .Select(kvp => kvp.Key)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToList();
+        var deleted = sent.Keys
+            .Except(current.Keys)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToList();
+
+        if (changed.Count == 0 && deleted.Count == 0)
+        {
+            return new Result<PackDraft>.Fail(SyncError.Invalid(
+                "nothing changed since the last package — the tree matches the sent state"));
+        }
+
+        var seq = state.SentChainSeq + 1;
+        var rootHash = PlainTree.ComputeRootHash(current);
+
+        var files = CollectFiles(changed, path =>
+        {
+            try
+            {
+                return new Result<byte[]>.Ok(PlainTree.ReadFile(root, path));
+            }
+            catch (IOException ex)
+            {
+                return new Result<byte[]>.Fail(SyncError.Invalid($"cannot read '{path}': {ex.Message}"));
+            }
+        });
+        if (files is not Result<List<PackageFileEntry>>.Ok filesOk)
+        {
+            return new Result<PackDraft>.Fail(((Result<List<PackageFileEntry>>.Fail)files).Error);
+        }
+
+        var manifest = new SyncManifest
+        {
+            SchemaVersion = 1,
+            Channel = state.Channel.Name,
+            Mode = SyncMode.Plain,
+            BasePosition = state.SentChainSeq > 0 ? new ChainPosition(state.SentChainSeq, state.SentChainRootHash ?? "") : null,
+            NewPosition = new ChainPosition(seq, rootHash),
+            Features = [],
+            Commits = [],
+            Files = filesOk.Value,
+            Deletions = deleted
+        };
+
+        var updatedState = state with
+        {
+            SentFileHashes = current,
+            SentChainSeq = seq,
+            SentChainRootHash = rootHash
+        };
+
+        return new Result<PackDraft>.Ok(new PackDraft
+        {
+            Manifest = manifest,
+            Warnings = [],
+            UpdatedState = updatedState
+        });
+    }
+
+    private static Result<List<PackageFileEntry>> CollectFiles(
+        IEnumerable<string> paths,
+        Func<string, Result<byte[]>> readContent)
+    {
+        var entries = new List<PackageFileEntry>();
+        foreach (var path in paths.OrderBy(p => p, StringComparer.Ordinal))
+        {
+            var content = readContent(path);
+            if (content is not Result<byte[]>.Ok contentOk)
+            {
+                return new Result<List<PackageFileEntry>>.Fail(((Result<byte[]>.Fail)content).Error);
+            }
+
+            entries.Add(new PackageFileEntry
+            {
+                Path = path,
+                Hash = ContentHash.Compute(contentOk.Value),
+                Content = contentOk.Value
+            });
+        }
+
+        return new Result<List<PackageFileEntry>>.Ok(entries);
     }
 }

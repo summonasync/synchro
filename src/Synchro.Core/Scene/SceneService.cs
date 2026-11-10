@@ -130,17 +130,29 @@ public static class SceneService
         }
 
         var scene = state.PendingScene;
-        var unresolved = scene.ConflictPaths.Where(p => !scene.Resolutions.ContainsKey(p)).ToList();
+        var unresolved = scene.ConflictPaths
+            .Where(p => !scene.Resolutions.TryGetValue(p, out var r) || r == OpMerge)
+            .ToList();
         if (unresolved.Count > 0)
         {
+            var hasMergeDrafts = unresolved.Any(p => scene.Resolutions.TryGetValue(p, out var r) && r == OpMerge);
+            var hint = hasMergeDrafts
+                ? " — merge drafts must be finalized: synchro scene resolve <path> resolved"
+                : string.Empty;
             return new Result<ApplyReport>.Fail(SyncError.Conflict(
-                $"{unresolved.Count} conflict path(s) unresolved: {string.Join(", ", unresolved)}"));
+                $"{unresolved.Count} conflict path(s) not finalized: {string.Join(", ", unresolved)}{hint}"));
         }
 
         if (!File.Exists(scene.PackagePath))
         {
             return new Result<ApplyReport>.Fail(SyncError.Conflict(
                 $"package file moved or deleted — restore '{scene.PackagePath}' to finalize the scene"));
+        }
+
+        if (SceneStaging.Digest(scene.PackagePath) != scene.Digest)
+        {
+            return new Result<ApplyReport>.Fail(SyncError.Conflict(
+                "the package at this path changed since the scene was staged — restore the original package file"));
         }
 
         var opened = PackageSealer.Open(scene.PackagePath, key);
@@ -154,18 +166,28 @@ public static class SceneService
         var headSha = manifest.Mode == SyncMode.Git
             ? GitChangeService.GetHeadSha(root) is Result<string>.Ok head ? head.Value : null
             : null;
-        var baseSha = manifest.BasePosition is GitPosition basePos ? basePos.Sha : null;
 
         var (advanced, warnings) = ApplyService.AdvanceState(
-            root, state, manifest, manifest.Mode, digest, headSha, baseSha);
+            root, state, manifest, manifest.Mode, digest, headSha);
+
+        foreach (var path in scene.ConflictPaths)
+        {
+            var op = scene.Resolutions[path];
+            if ((op == OpReplace || op == OpResolved) && !File.Exists(Path.Combine(
+                    root, path.Replace('/', Path.DirectorySeparatorChar))))
+            {
+                warnings.Add($"resolved path '{path}' is missing from the working tree at commit");
+            }
+        }
 
         var updated = advanced with { PendingScene = null };
         try
         {
             Directory.Delete(scene.SceneDir, true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            warnings.Add($"scene directory could not be deleted: {scene.SceneDir}");
         }
 
         return new Result<ApplyReport>.Ok(new ApplyReport

@@ -185,6 +185,7 @@ public static class ApplyService
                 PendingScene = new PendingSceneState
                 {
                     PackagePath = Path.GetFullPath(packagePath),
+                    Digest = digest,
                     SceneDir = sceneDir,
                     ConflictPaths = conflictPaths,
                     NewPosition = manifest.NewPosition.Display,
@@ -195,7 +196,7 @@ public static class ApplyService
         }
         else
         {
-            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value, baseSha: baseSha);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value);
             warnings.AddRange(advanceWarnings);
             updated = advanced;
         }
@@ -318,6 +319,7 @@ public static class ApplyService
                 PendingScene = new PendingSceneState
                 {
                     PackagePath = Path.GetFullPath(packagePath),
+                    Digest = digest,
                     SceneDir = sceneDir,
                     ConflictPaths = conflictPaths,
                     NewPosition = manifest.NewPosition.Display,
@@ -328,7 +330,7 @@ public static class ApplyService
         }
         else
         {
-            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null, baseSha: null);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null);
             warnings.AddRange(advanceWarnings);
             updated = advanced;
         }
@@ -428,8 +430,7 @@ public static class ApplyService
         SyncManifest manifest,
         SyncMode mode,
         string digest,
-        string? headSha,
-        string? baseSha)
+        string? headSha)
     {
         var evt = new LedgerEvent
         {

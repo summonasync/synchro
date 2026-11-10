@@ -28,6 +28,11 @@ internal static class SceneCommand
             return PrintStatus(state.Value);
         }
 
+        if (args[0] == "resolve" && args.Length > 3)
+        {
+            return Usage("too many arguments — usage: synchro scene resolve <path> <drop|replace|merge|resolved>");
+        }
+
         return args[0] switch
         {
             "resolve" when args.Length >= 3 => Resolve(root, state.Value, key, args[1], args[2]),
@@ -42,8 +47,8 @@ internal static class SceneCommand
         var status = SceneService.Status(state);
         if (status is not Result<SceneStatus>.Ok ok)
         {
-            Console.WriteLine(((Result<SceneStatus>.Fail)status).Error.Message);
-            return 0;
+            Console.Error.WriteLine(((Result<SceneStatus>.Fail)status).Error.Message);
+            return 1;
         }
 
         var value = ok.Value;

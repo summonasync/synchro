@@ -109,6 +109,9 @@ public class SceneServiceTests
             var merged = SceneService.Resolve(dirB, conflicted, "a.txt", SceneService.OpMerge)
                 .ShouldBeOfType<Result<StoreState>.Ok>().Value;
 
+            var prematureCommit = SceneService.Commit(dirB, merged, Key);
+            prematureCommit.ShouldBeOfType<Result<ApplyReport>.Fail>();
+
             var working = File.ReadAllText(Path.Combine(dirB, "a.txt"));
             working.ShouldContain("<<<<<<<");
             working.ShouldContain("A line");
@@ -193,7 +196,7 @@ public class SceneServiceTests
             var message = SceneService.Commit(dirB, conflicted, Key)
                 .ShouldBeOfType<Result<ApplyReport>.Fail>().Error.Message;
 
-            message.ShouldContain("unresolved");
+            message.ShouldContain("not finalized");
             message.ShouldContain("a.txt");
         }
         finally

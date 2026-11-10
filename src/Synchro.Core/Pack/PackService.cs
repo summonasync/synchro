@@ -108,7 +108,13 @@ public static class PackService
 
     private static Result<PackDraft> PackPlain(string root, StoreState state)
     {
-        var current = PlainTree.ComputeHashes(root);
+        var scanned = PlainTree.ComputeHashes(root);
+        if (scanned is not Result<Dictionary<string, string>>.Ok scanOk)
+        {
+            return new Result<PackDraft>.Fail(((Result<Dictionary<string, string>>.Fail)scanned).Error);
+        }
+
+        var current = scanOk.Value;
         var sent = state.SentFileHashes;
 
         var changed = current

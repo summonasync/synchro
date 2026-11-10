@@ -70,6 +70,10 @@ internal static class PackCommand
         var manifest = draft.Manifest;
         var seq = manifest.NewPosition is ChainPosition chain ? chain.Seq : 0;
         var target = outPath ?? $"synchro-{seq}.synchr";
+        if (!target.EndsWith(".synchr", StringComparison.OrdinalIgnoreCase))
+        {
+            target += ".synchr";
+        }
 
         PackageSealer.Seal(target, key, manifest);
 

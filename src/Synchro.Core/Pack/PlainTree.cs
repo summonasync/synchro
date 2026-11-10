@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Synchro.Core;
 using Synchro.Core.Hashing;
 
 namespace Synchro.Core.Pack;
@@ -8,16 +9,24 @@ public static class PlainTree
 {
     private static readonly string[] SkipDirs = [".synchro", ".git"];
 
-    public static Dictionary<string, string> ComputeHashes(string root)
+    public static Result<Dictionary<string, string>> ComputeHashes(string root)
     {
         var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var file in EnumerateFiles(root))
         {
             var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            hashes[relative] = ContentHash.Compute(File.ReadAllBytes(file));
+            try
+            {
+                hashes[relative] = ContentHash.Compute(File.ReadAllBytes(file));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return new Result<Dictionary<string, string>>.Fail(
+                    SyncError.Invalid($"cannot read '{relative}': {ex.Message}"));
+            }
         }
 
-        return hashes;
+        return new Result<Dictionary<string, string>>.Ok(hashes);
     }
 
     public static byte[] ReadFile(string root, string relativePath) =>
@@ -33,7 +42,7 @@ public static class PlainTree
             .Where(f =>
             {
                 var relative = Path.GetRelativePath(root, f);
-                return !IsSkippedDir(relative) && !relative.EndsWith(".synchr", StringComparison.Ordinal);
+                return !IsSkippedDir(relative) && !relative.EndsWith(".synchr", StringComparison.OrdinalIgnoreCase);
             });
 
     private static bool IsSkippedDir(string relativePath)

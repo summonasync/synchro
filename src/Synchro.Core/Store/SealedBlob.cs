@@ -8,7 +8,9 @@ public static class SealedBlob
     private const int TagSize = 16;
 
     // shared container for store and packages: file bytes are nonce||ciphertext||tag,
-    // deliberately free of magic headers so both stay indistinguishable from random data
+    // deliberately free of magic headers so both stay indistinguishable from random data.
+    // ciphertext length leaks the compressed payload size — accepted for MVP, content-length
+    // padding is a deliberate non-goal
     public static void Save(string path, byte[] key, byte[] aad, byte[] payload)
     {
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
@@ -20,15 +22,30 @@ public static class SealedBlob
             aes.Encrypt(nonce, payload, ciphertext, tag, aad);
         }
 
-        var tempPath = path + ".tmp";
-        using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        var tempPath = path + ".tmp-" + Path.GetRandomFileName();
+        try
         {
-            fs.Write(nonce);
-            fs.Write(ciphertext);
-            fs.Write(tag);
-        }
+            using (var fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(nonce);
+                fs.Write(ciphertext);
+                fs.Write(tag);
+            }
 
-        File.Move(tempPath, path, overwrite: true);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch (IOException)
+            {
+            }
+
+            throw;
+        }
     }
 
     public static Result<byte[]> Load(string path, byte[] key, byte[] aad)

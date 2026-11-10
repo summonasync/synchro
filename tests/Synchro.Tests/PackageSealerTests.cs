@@ -137,4 +137,52 @@ public class PackageSealerTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void Open_StoreContainerAsPackage_FailsCleanly()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var path = Path.Combine(dir, "crossed.synchr");
+            var key = RandomNumberGenerator.GetBytes(32);
+            var state = new Synchro.Core.Store.StoreState
+            {
+                SchemaVersion = 1,
+                Channel = new Synchro.Core.Store.ChannelConfig { Name = "c", Peer = "p", Mode = Synchro.Core.SyncMode.Git },
+                Ledger = [],
+                AppliedFileHashes = [],
+                AppliedContents = []
+            };
+            Synchro.Core.Store.StoreContainer.Save(path, key, state);
+
+            var opened = PackageSealer.Open(path, key);
+
+            opened.ShouldBeOfType<Result<SyncManifest>.Fail>();
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Load_PackageAsStoreContainer_FailsCleanly()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var path = Path.Combine(dir, "crossed.container");
+            var key = RandomNumberGenerator.GetBytes(32);
+            PackageSealer.Seal(path, key, SampleManifest());
+
+            var loaded = Synchro.Core.Store.StoreContainer.Load(path, key);
+
+            loaded.ShouldBeOfType<Result<Synchro.Core.Store.StoreState>.Fail>();
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }

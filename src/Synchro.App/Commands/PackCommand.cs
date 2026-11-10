@@ -61,15 +61,16 @@ internal static class PackCommand
         }
 
         return state.Value.Channel.Mode == SyncMode.Plain
-            ? WriteSealed(packOk.Value, key, outPath)
+            ? WriteSealed(packOk.Value, key, outPath, state.Value.Channel.Peer)
             : WriteDraft(packOk.Value, root, outPath);
     }
 
-    private static int WriteSealed(PackDraft draft, byte[] key, string? outPath)
+    private static int WriteSealed(PackDraft draft, byte[] key, string? outPath, string peerName)
     {
         var manifest = draft.Manifest;
         var seq = manifest.NewPosition is ChainPosition chain ? chain.Seq : 0;
-        var target = outPath ?? $"synchro-{seq}.synchr";
+        var safePeer = Sanitize(peerName);
+        var target = outPath ?? $"synchro-{seq}-{safePeer}.synchr";
         if (!target.EndsWith(".synchr", StringComparison.OrdinalIgnoreCase))
         {
             target += ".synchr";
@@ -114,4 +115,7 @@ internal static class PackCommand
         Console.WriteLine($"  draft written: {target}");
         return 0;
     }
+
+    private static string Sanitize(string name) =>
+        new(name.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
 }

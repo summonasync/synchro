@@ -30,7 +30,7 @@ internal static class CommandRouter
         {
             "init" => InitCommand.Run(args[1..]),
             "pack" => PackCommand.Run(args[1..]),
-            "apply" => Stub.NotImplemented("apply"),
+            "apply" => ApplyCommand.Run(args[1..]),
             "status" => Stub.NotImplemented("status"),
             "log" => Stub.NotImplemented("log"),
             "serve" => Stub.NotImplemented("serve"),

@@ -51,6 +51,30 @@ public class Position_UnionVariants_DiscriminateCorrectly
         asChain.Seq.ShouldBe(7);
         asChain.Display.ShouldStartWith("#7:");
     }
+
+    [Fact]
+    public void Position_JsonRoundTrip_PreservesVariantAndData()
+    {
+        var manifest = new SyncManifest
+        {
+            SchemaVersion = 1,
+            Channel = "slurpy",
+            Mode = SyncMode.Git,
+            BasePosition = new GitPosition("abc123def456"),
+            NewPosition = new ChainPosition(3, "a1b2c3d4e5f6"),
+            Features = [],
+            Commits = [],
+            Files = [],
+            Deletions = []
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(manifest);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<SyncManifest>(json);
+
+        restored.ShouldNotBeNull();
+        restored.BasePosition.ShouldBe(new GitPosition("abc123def456"));
+        restored.NewPosition.ShouldBe(new ChainPosition(3, "a1b2c3d4e5f6"));
+    }
 }
 
 public class Result_OkAndFailVariants_CarryValueOrError

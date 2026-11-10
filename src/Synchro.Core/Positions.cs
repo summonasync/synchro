@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Synchro.Core;
 
 public enum SyncMode
@@ -6,6 +8,9 @@ public enum SyncMode
     Plain
 }
 
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
+[JsonDerivedType(typeof(GitPosition), "git")]
+[JsonDerivedType(typeof(ChainPosition), "chain")]
 public abstract record Position
 {
     public abstract string Display { get; }

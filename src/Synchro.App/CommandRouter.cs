@@ -29,7 +29,7 @@ internal static class CommandRouter
         return command switch
         {
             "init" => InitCommand.Run(args[1..]),
-            "pack" => Stub.NotImplemented("pack"),
+            "pack" => PackCommand.Run(args[1..]),
             "apply" => Stub.NotImplemented("apply"),
             "status" => Stub.NotImplemented("status"),
             "log" => Stub.NotImplemented("log"),
@@ -43,6 +43,7 @@ internal static class CommandRouter
         Console.WriteLine("usage: synchro <command> [options]");
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
         Console.WriteLine("init [options]        set up the local store (--key <hex> to adopt a peer key)");
+        Console.WriteLine("pack [--full] [--out] build a package manifest draft from committed state");
         Console.WriteLine("help                  show this help");
         Console.WriteLine("run 'synchro <command> --help' for command details");
         return 0;

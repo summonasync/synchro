@@ -29,4 +29,6 @@ public sealed record StoreState
     public required IReadOnlyList<LedgerEvent> Ledger { get; init; }
     public required Dictionary<string, string> AppliedFileHashes { get; init; }
     public required Dictionary<string, byte[]> AppliedContents { get; init; }
+
+    public string? PeerKnownLocalPosition { get; init; }
 }

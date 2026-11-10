@@ -137,6 +137,25 @@ public class GitChangeServiceTests
     }
 
     [Fact]
+    public void GetFileContent_MissingPath_FailsCleanly()
+    {
+        var dir = TestGitRepo.Create();
+        try
+        {
+            TestGitRepo.Commit(dir, "a.txt", "one\n", "first");
+
+            var content = GitChangeService.GetFileContent(dir, "missing.txt");
+
+            var fail = content.ShouldBeOfType<Result<byte[]>.Fail>();
+            fail.Error.Message.ShouldContain("missing.txt");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void GetHeadTreeFiles_ListsCommittedTreeOnly()
     {
         var dir = TestGitRepo.Create();

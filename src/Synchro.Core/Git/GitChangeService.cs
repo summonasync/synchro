@@ -80,11 +80,21 @@ public static class GitChangeService
                 continue;
             }
 
+            var files = new List<string>();
+            for (var i = 2; i < tokens.Length; i++)
+            {
+                var token = i == 2 ? tokens[i].TrimStart('\n') : tokens[i];
+                if (token.Length > 0)
+                {
+                    files.Add(token);
+                }
+            }
+
             commits.Add(new CommitInfo
             {
                 Sha = tokens[0],
                 Message = tokens[1],
-                Files = [.. tokens.Skip(2).Select(t => t.TrimStart('\n')).Where(t => t.Length > 0)]
+                Files = files
             });
         }
 

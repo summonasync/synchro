@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Synchro.App/Synchro.App.csproj" />
+    <Project Path="src/Synchro.Core/Synchro.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Synchro.Tests/Synchro.Tests.csproj" />
+  </Folder>
+</Solution>

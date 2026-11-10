@@ -373,6 +373,42 @@ public class ApplyGitTests
     }
 
     [Fact]
+    public void Apply_NulBytePath_FailsCleanly()
+    {
+        var repoB = TempDir.Create();
+        try
+        {
+            TestGitRepo.Commit(repoB, "seed.txt", "seed\n", "seed");
+
+            var manifest = new SyncManifest
+            {
+                SchemaVersion = 1,
+                Channel = "slurpy",
+                Mode = SyncMode.Git,
+                BasePosition = null,
+                NewPosition = new GitPosition(new string('a', 40)),
+                Features = [],
+                Commits = [],
+                Files =
+                [
+                    new PackageFileEntry { Path = "evil\0.txt", Hash = "x", Content = "evil"u8.ToArray() }
+                ],
+                Deletions = []
+            };
+            var pkg = Path.Combine(repoB, "nul.synchr");
+            PackageSealer.Seal(pkg, Key, manifest);
+
+            var message = ApplyFail(repoB, GitState(), pkg);
+
+            message.ShouldContain("invalid characters");
+        }
+        finally
+        {
+            Directory.Delete(repoB, true);
+        }
+    }
+
+    [Fact]
     public void Apply_PendingScene_BlocksNextApply()
     {
         var repoA = TestGitRepo.Create();

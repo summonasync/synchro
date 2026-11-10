@@ -168,6 +168,47 @@ public class ApplyPlainTests
     }
 
     [Fact]
+    public void Apply_MidApplyFailure_ReApplyHealsWithoutPhantomConflicts()
+    {
+        var dirA = TempDir.Create();
+        var dirB = TempDir.Create();
+        try
+        {
+            Write(dirA, "a.txt", "alpha\n");
+            var pkg1 = PackPlain(dirA, PlainState(), Path.Combine(dirA, "s1.synchr"));
+            var stateB = Apply(dirB, PlainState(), pkg1).UpdatedState!;
+            var stateA1 = PackService.Pack(dirA, PlainState(), new PackOptions())
+                .ShouldBeOfType<Result<PackDraft>.Ok>().Value.UpdatedState!;
+
+            File.WriteAllText(Path.Combine(dirA, "a.txt"), "alpha2\n");
+            Write(dirA, "sub/c.txt", "cee\n");
+            Write(dirA, "d.txt", "dee\n");
+            var pkg2 = PackPlain(dirA, stateA1, Path.Combine(dirA, "s2.synchr"));
+
+            File.WriteAllText(Path.Combine(dirB, "sub"), "this file blocks the sub directory");
+
+            var blocked = ApplyService.Apply(dirB, stateB, Key, pkg2);
+            blocked.ShouldBeOfType<Result<ApplyReport>.Fail>();
+
+            File.Delete(Path.Combine(dirB, "sub"));
+
+            var healed = Apply(dirB, stateB, pkg2);
+
+            healed.ScenePending.ShouldBeFalse();
+            healed.ConflictPaths.ShouldBeEmpty();
+            healed.AppliedFiles.ShouldBe(["a.txt", "d.txt", "sub/c.txt"]);
+            File.ReadAllText(Path.Combine(dirB, "a.txt")).ShouldBe("alpha2\n");
+            File.ReadAllText(Path.Combine(dirB, "sub", "c.txt")).ShouldBe("cee\n");
+            healed.UpdatedState!.AppliedChainSeq.ShouldBe(2);
+        }
+        finally
+        {
+            Directory.Delete(dirA, true);
+            Directory.Delete(dirB, true);
+        }
+    }
+
+    [Fact]
     public void Apply_PlainSamePackageTwice_FriendlyNoOp()
     {
         var dirA = TempDir.Create();

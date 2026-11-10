@@ -75,17 +75,12 @@ public static class ApplyService
                 return new Result<ApplyReport>.Fail(SyncError.Invalid("git-mode package carries a non-git base position"));
             }
 
-            if (manifest.NewPosition is not GitPosition newPos)
+            if (manifest.NewPosition is not GitPosition)
             {
                 return new Result<ApplyReport>.Fail(SyncError.Invalid("git-mode package carries a non-git new position"));
             }
 
             baseSha = basePos.Sha;
-
-            if (newPos.Sha == state.PeerHeadPosition)
-            {
-                return AlreadyApplied();
-            }
 
             if (state.PeerHeadPosition is null)
             {
@@ -111,9 +106,14 @@ public static class ApplyService
         }
 
         var incomingByPath = manifest.Files.ToDictionary(f => f.Path, f => f, StringComparer.Ordinal);
-        var overlap = baseSha is null
+        var changedCandidates = baseSha is null
             ? BaselineContentConflicts(root, incomingByPath)
             : [.. incomingByPath.Keys.Where(p => myChanged.Contains(p))];
+        // a mid-apply failure leaves already-written files drifted/changed; the disk already
+        // carries the package content, so re-apply must treat them as applied, not conflicts
+        var overlap = changedCandidates
+            .Except(AlreadyPackageContent(root, incomingByPath, changedCandidates))
+            .ToHashSet(StringComparer.Ordinal);
 
         var warnings = new List<string>();
         if (GitChangeService.IsDirty(root))
@@ -127,8 +127,9 @@ public static class ApplyService
 
         try
         {
-            // writes before deletions: a mid-apply IOException leaves the tree partially
-            // written but state unadvanced — re-apply rewrites everything idempotently
+            // writes before deletions: a mid-apply failure leaves the tree partially
+            // written but state unadvanced — re-apply recognises written files via
+            // content comparison and finishes the rest
             foreach (var entry in incomingByPath.Values)
             {
                 if (overlap.Contains(entry.Path))
@@ -160,10 +161,10 @@ public static class ApplyService
                 appliedDeletions.Add(del);
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new Result<ApplyReport>.Fail(SyncError.Invalid(
-                $"apply failed midway ({ex.Message}) — fix the file and re-apply; already-written files are rewritten idempotently"));
+                $"apply failed midway ({ex.Message}) — fix the blocker and re-apply; already-written files are recognised as applied"));
         }
 
         var conflictPaths = overlap
@@ -247,9 +248,14 @@ public static class ApplyService
         }
 
         var incomingByPath = manifest.Files.ToDictionary(f => f.Path, f => f, StringComparer.Ordinal);
-        var drifted = isBaseline
+        var driftedCandidates = isBaseline
             ? BaselineContentConflicts(root, incomingByPath)
             : LocalDrift(scanOk.Value, state.AppliedFileHashes);
+        // re-apply after a mid-apply failure: files already carrying the package content
+        // are recognised as applied instead of escalating to a phantom conflict
+        var drifted = driftedCandidates
+            .Except(AlreadyPackageContent(root, incomingByPath, driftedCandidates.Where(incomingByPath.ContainsKey)))
+            .ToHashSet(StringComparer.Ordinal);
 
         var appliedFiles = new List<string>();
         var appliedDeletions = new List<string>();
@@ -290,10 +296,10 @@ public static class ApplyService
                 appliedDeletions.Add(del);
             }
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new Result<ApplyReport>.Fail(SyncError.Invalid(
-                $"apply failed midway ({ex.Message}) — fix the file and re-apply; already-written files are rewritten idempotently"));
+                $"apply failed midway ({ex.Message}) — fix the blocker and re-apply; already-written files are recognised as applied"));
         }
 
         var conflictPaths = drifted
@@ -337,6 +343,40 @@ public static class ApplyService
             ScenePending = scenePending,
             UpdatedState = updated
         });
+    }
+
+    private static HashSet<string> AlreadyPackageContent(
+        string root,
+        Dictionary<string, PackageFileEntry> incoming,
+        IEnumerable<string> candidates)
+    {
+        var already = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in candidates)
+        {
+            if (!incoming.TryGetValue(path, out var entry))
+            {
+                continue;
+            }
+
+            var localPath = Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(localPath))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (ContentHash.Compute(File.ReadAllBytes(localPath)) == entry.Hash)
+                {
+                    already.Add(path);
+                }
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        return already;
     }
 
     private static HashSet<string> LocalDrift(

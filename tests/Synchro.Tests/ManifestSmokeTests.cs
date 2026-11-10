@@ -4,10 +4,10 @@ using Xunit;
 
 namespace Synchro.Tests;
 
-public class ManifestSmokeTests
+public class SyncManifest_BuildWithRequiredFields_ExposesValues
 {
     [Fact]
-    public void ManifestCarriesRequiredFields()
+    public void Manifest_AllFields_RoundTrip()
     {
         var manifest = new SyncManifest
         {
@@ -36,23 +36,27 @@ public class ManifestSmokeTests
         manifest.BasePosition.ShouldBe(new GitPosition("abc123def456"));
         manifest.Features.ShouldHaveSingleItem().Name.ShouldBe("checkout");
     }
+}
 
+public class Position_UnionVariants_DiscriminateCorrectly
+{
     [Fact]
-    public void PositionUnionDiscriminatesVariants()
+    public void Position_GitAndChain_PatternMatch()
     {
         Position git = new GitPosition("abc123def456");
         Position chain = new ChainPosition(7, "a1b2c3d4e5f6");
 
         git.ShouldBeOfType<GitPosition>();
-        chain.ShouldBeOfType<ChainPosition>();
-
         var asChain = chain.ShouldBeOfType<ChainPosition>();
         asChain.Seq.ShouldBe(7);
         asChain.Display.ShouldStartWith("#7:");
     }
+}
 
+public class Result_OkAndFailVariants_CarryValueOrError
+{
     [Fact]
-    public void ResultUnionCarriesValueOrError()
+    public void Result_EitherVariant_Matches()
     {
         Result<int> ok = new Result<int>.Ok(42);
         Result<int> fail = new Result<int>.Fail(SyncError.Invalid("bad input"));

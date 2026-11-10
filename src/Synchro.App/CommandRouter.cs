@@ -21,9 +21,14 @@ internal static class CommandRouter
             return 0;
         }
 
+        if (command is "help" or "--help" or "-h")
+        {
+            return WriteUsage();
+        }
+
         return command switch
         {
-            "init" => Stub.NotImplemented("init"),
+            "init" => InitCommand.Run(args[1..]),
             "pack" => Stub.NotImplemented("pack"),
             "apply" => Stub.NotImplemented("apply"),
             "status" => Stub.NotImplemented("status"),
@@ -37,7 +42,10 @@ internal static class CommandRouter
     {
         Console.WriteLine("usage: synchro <command> [options]");
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
-        return 2;
+        Console.WriteLine("init [options]        set up the local store (--key <hex> to adopt a peer key)");
+        Console.WriteLine("help                  show this help");
+        Console.WriteLine("run 'synchro <command> --help' for command details");
+        return 0;
     }
 
     private static int WriteUnknown(string command)

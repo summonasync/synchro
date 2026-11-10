@@ -103,6 +103,11 @@ internal static class SceneCommand
         StoreContainer.Save(StorePaths.Container(root), key, ok.Value.UpdatedState!);
         Console.WriteLine("scene committed — sync state advanced, ledger updated");
         Console.WriteLine($"  resolved paths: {ok.Value.ConflictPaths.Count}");
+        foreach (var warning in ok.Value.Warnings)
+        {
+            Console.WriteLine($"  warning: {warning}");
+        }
+
         return 0;
     }
 

@@ -1,4 +1,5 @@
 using Synchro.Core.Git;
+using Synchro.Core.Package;
 using Synchro.Core.Store;
 
 namespace Synchro.Core.Scene;
@@ -60,6 +61,11 @@ public static class SceneStaging
 
     private static void WriteUnder(string baseDir, string relativePath, byte[] content)
     {
+        if (!PackagePaths.IsSafe(baseDir, relativePath))
+        {
+            throw new InvalidOperationException($"scene path escapes the scene directory: '{relativePath}'");
+        }
+
         var target = Path.Combine(baseDir, relativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, content);

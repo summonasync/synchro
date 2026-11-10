@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Synchro.Core.Git;
 using Synchro.Core.Hashing;
 using Synchro.Core.Pack;
@@ -23,6 +22,14 @@ public static class ApplyService
         {
             return new Result<ApplyReport>.Fail(
                 SyncError.Invalid($"package mode '{manifest.Mode}' does not match store mode '{state.Channel.Mode}'"));
+        }
+
+        var pathError = PackagePaths.Validate(
+            root,
+            manifest.Files.Select(f => f.Path).Concat(manifest.Deletions));
+        if (pathError is not null)
+        {
+            return new Result<ApplyReport>.Fail(pathError);
         }
 
         if (state.PendingScene is not null)
@@ -68,7 +75,17 @@ public static class ApplyService
                 return new Result<ApplyReport>.Fail(SyncError.Invalid("git-mode package carries a non-git base position"));
             }
 
+            if (manifest.NewPosition is not GitPosition newPos)
+            {
+                return new Result<ApplyReport>.Fail(SyncError.Invalid("git-mode package carries a non-git new position"));
+            }
+
             baseSha = basePos.Sha;
+
+            if (newPos.Sha == state.PeerHeadPosition)
+            {
+                return AlreadyApplied();
+            }
 
             if (state.PeerHeadPosition is null)
             {
@@ -84,7 +101,13 @@ public static class ApplyService
 
             var lastAppliedLocal = state.Ledger
                 .LastOrDefault(e => e.Direction == LedgerDirection.Applied)?.LocalPosition;
-            myChanged = LocalChangedSet(root, lastAppliedLocal);
+            var changed = LocalChangedSet(root, lastAppliedLocal);
+            if (changed is not Result<HashSet<string>>.Ok changedOk)
+            {
+                return new Result<ApplyReport>.Fail(((Result<HashSet<string>>.Fail)changed).Error);
+            }
+
+            myChanged = changedOk.Value;
         }
 
         var incomingByPath = manifest.Files.ToDictionary(f => f.Path, f => f, StringComparer.Ordinal);
@@ -102,35 +125,45 @@ public static class ApplyService
         var appliedDeletions = new List<string>();
         var deletionConflicts = new List<string>();
 
-        foreach (var del in manifest.Deletions)
+        try
         {
-            var localPath = Path.Combine(root, del.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(localPath))
+            // writes before deletions: a mid-apply IOException leaves the tree partially
+            // written but state unadvanced — re-apply rewrites everything idempotently
+            foreach (var entry in incomingByPath.Values)
             {
-                continue;
+                if (overlap.Contains(entry.Path))
+                {
+                    continue;
+                }
+
+                var target = Path.Combine(root, entry.Path.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, entry.Content);
+                appliedFiles.Add(entry.Path);
             }
 
-            if (myChanged.Contains(del))
+            foreach (var del in manifest.Deletions)
             {
-                deletionConflicts.Add(del);
-                continue;
-            }
+                var localPath = Path.Combine(root, del.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(localPath))
+                {
+                    continue;
+                }
 
-            File.Delete(localPath);
-            appliedDeletions.Add(del);
+                if (myChanged.Contains(del))
+                {
+                    deletionConflicts.Add(del);
+                    continue;
+                }
+
+                File.Delete(localPath);
+                appliedDeletions.Add(del);
+            }
         }
-
-        foreach (var entry in incomingByPath.Values)
+        catch (IOException ex)
         {
-            if (overlap.Contains(entry.Path))
-            {
-                continue;
-            }
-
-            var target = Path.Combine(root, entry.Path.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.WriteAllBytes(target, entry.Content);
-            appliedFiles.Add(entry.Path);
+            return new Result<ApplyReport>.Fail(SyncError.Invalid(
+                $"apply failed midway ({ex.Message}) — fix the file and re-apply; already-written files are rewritten idempotently"));
         }
 
         var conflictPaths = overlap
@@ -161,7 +194,9 @@ public static class ApplyService
         }
         else
         {
-            updated = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value, baseSha: baseSha);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value, baseSha: baseSha);
+            warnings.AddRange(advanceWarnings);
+            updated = advanced;
         }
 
         return new Result<ApplyReport>.Ok(new ApplyReport
@@ -219,36 +254,46 @@ public static class ApplyService
         var appliedFiles = new List<string>();
         var appliedDeletions = new List<string>();
         var deletionConflicts = new List<string>();
+        var warnings = new List<string>();
 
-        foreach (var del in manifest.Deletions)
+        try
         {
-            var localPath = Path.Combine(root, del.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(localPath))
+            // writes before deletions: re-apply heals a mid-apply failure idempotently
+            foreach (var entry in incomingByPath.Values)
             {
-                continue;
+                if (drifted.Contains(entry.Path))
+                {
+                    continue;
+                }
+
+                var target = Path.Combine(root, entry.Path.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, entry.Content);
+                appliedFiles.Add(entry.Path);
             }
 
-            if (drifted.Contains(del))
+            foreach (var del in manifest.Deletions)
             {
-                deletionConflicts.Add(del);
-                continue;
-            }
+                var localPath = Path.Combine(root, del.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(localPath))
+                {
+                    continue;
+                }
 
-            File.Delete(localPath);
-            appliedDeletions.Add(del);
+                if (drifted.Contains(del))
+                {
+                    deletionConflicts.Add(del);
+                    continue;
+                }
+
+                File.Delete(localPath);
+                appliedDeletions.Add(del);
+            }
         }
-
-        foreach (var entry in incomingByPath.Values)
+        catch (IOException ex)
         {
-            if (drifted.Contains(entry.Path))
-            {
-                continue;
-            }
-
-            var target = Path.Combine(root, entry.Path.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.WriteAllBytes(target, entry.Content);
-            appliedFiles.Add(entry.Path);
+            return new Result<ApplyReport>.Fail(SyncError.Invalid(
+                $"apply failed midway ({ex.Message}) — fix the file and re-apply; already-written files are rewritten idempotently"));
         }
 
         var conflictPaths = drifted
@@ -277,7 +322,9 @@ public static class ApplyService
         }
         else
         {
-            updated = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null, baseSha: null);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null, baseSha: null);
+            warnings.AddRange(advanceWarnings);
+            updated = advanced;
         }
 
         return new Result<ApplyReport>.Ok(new ApplyReport
@@ -285,7 +332,7 @@ public static class ApplyService
             AppliedFiles = appliedFiles,
             AppliedDeletions = appliedDeletions,
             ConflictPaths = conflictPaths,
-            Warnings = [],
+            Warnings = warnings,
             AlreadyApplied = false,
             ScenePending = scenePending,
             UpdatedState = updated
@@ -335,7 +382,7 @@ public static class ApplyService
         return conflicts;
     }
 
-    private static StoreState AdvanceState(
+    private static (StoreState Updated, List<string> Warnings) AdvanceState(
         string root,
         StoreState state,
         SyncManifest manifest,
@@ -371,17 +418,22 @@ public static class ApplyService
                 : state.AppliedChainSeq
         };
 
+        var warnings = new List<string>();
         var scanned = PlainTree.ComputeHashes(root);
-        var hashes = scanned is Result<Dictionary<string, string>>.Ok ok
-            ? ok.Value
-            : state.AppliedFileHashes;
-        updated = updated with
+        if (scanned is not Result<Dictionary<string, string>>.Ok ok)
         {
-            AppliedFileHashes = hashes,
-            AppliedContents = SnapshotContents(root, hashes.Keys)
-        };
+            warnings.Add("post-apply tree scan failed — the drift baseline is stale and the next apply may over-conflict");
+        }
+        else
+        {
+            updated = updated with
+            {
+                AppliedFileHashes = ok.Value,
+                AppliedContents = SnapshotContents(root, ok.Value.Keys)
+            };
+        }
 
-        return updated;
+        return (updated, warnings);
     }
 
     private static Dictionary<string, byte[]> SnapshotContents(string root, IEnumerable<string> paths)
@@ -413,37 +465,44 @@ public static class ApplyService
             UpdatedState = null
         });
 
-    private static HashSet<string> LocalChangedSet(string root, string? baseSha)
+    private static Result<HashSet<string>> LocalChangedSet(string root, string? baseSha)
     {
         var changed = new HashSet<string>(StringComparer.Ordinal);
 
         if (baseSha is not null)
         {
             var diff = GitChangeService.GetChanges(root, baseSha);
-            if (diff is Result<GitChanges>.Ok ok)
+            if (diff is not Result<GitChanges>.Ok ok)
             {
-                foreach (var path in ok.Value.Added.Concat(ok.Value.Modified).Concat(ok.Value.Deleted))
-                {
-                    changed.Add(path);
-                }
+                return new Result<HashSet<string>>.Fail(((Result<GitChanges>.Fail)diff).Error);
+            }
+
+            foreach (var path in ok.Value.Added.Concat(ok.Value.Modified).Concat(ok.Value.Deleted))
+            {
+                changed.Add(path);
             }
         }
 
-        var porcelain = GitRunner.Run(root, "status", "--porcelain").StdOut;
-        foreach (var line in porcelain.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        var porcelain = GitRunner.Run(root, "status", "--porcelain", "-z").StdOut;
+        var tokens = porcelain.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < tokens.Length; i++)
         {
-            var path = line.Length > 3 ? line[3..].Trim() : string.Empty;
-            if (path.Length == 0)
+            var token = tokens[i];
+            if (token.Length <= 3)
             {
                 continue;
             }
 
-            foreach (var part in path.Split(" -> "))
+            var status = token[..2];
+            changed.Add(token[3..]);
+
+            if (status[0] is 'R' or 'C' && i + 1 < tokens.Length)
             {
-                changed.Add(part.Trim('"'));
+                changed.Add(tokens[i + 1]);
+                i++;
             }
         }
 
-        return changed;
+        return new Result<HashSet<string>>.Ok(changed);
     }
 }

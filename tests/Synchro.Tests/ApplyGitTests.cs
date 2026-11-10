@@ -301,6 +301,78 @@ public class ApplyGitTests
     }
 
     [Fact]
+    public void Apply_MaliciousPaths_RejectedNothingEscapes()
+    {
+        var repoB = TempDir.Create();
+        try
+        {
+            TestGitRepo.Commit(repoB, "seed.txt", "seed\n", "seed");
+
+            var manifest = new SyncManifest
+            {
+                SchemaVersion = 1,
+                Channel = "slurpy",
+                Mode = SyncMode.Git,
+                BasePosition = null,
+                NewPosition = new GitPosition(new string('a', 40)),
+                Features = [],
+                Commits = [],
+                Files =
+                [
+                    new PackageFileEntry { Path = "../escaped.txt", Hash = "x", Content = "evil"u8.ToArray() },
+                    new PackageFileEntry { Path = "/abs/evil.txt", Hash = "x", Content = "evil"u8.ToArray() }
+                ],
+                Deletions = ["../../victim.txt"]
+            };
+            var pkg = Path.Combine(repoB, "evil.synchr");
+            PackageSealer.Seal(pkg, Key, manifest);
+
+            var message = ApplyFail(repoB, GitState(), pkg);
+
+            message.ShouldContain("not allowed");
+
+            var escaped = Path.GetFullPath(Path.Combine(repoB, "../escaped.txt"));
+            File.Exists(escaped).ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(repoB, true);
+            File.Delete(Path.GetFullPath(Path.Combine(repoB, "../escaped.txt")));
+        }
+    }
+
+    [Fact]
+    public void Apply_UnreadableLocalBase_FailsLoudInsteadOfSilentOverwrite()
+    {
+        var repoA = TestGitRepo.Create();
+        var repoB = TestGitRepo.Create();
+        try
+        {
+            TestGitRepo.Commit(repoA, "a.txt", "from A\n", "add a");
+            var headA = TestGitRepo.Commit(repoA, "b.txt", "bee from A\n", "add b");
+            var headSeedB = TestGitRepo.Commit(repoB, "seed.txt", "seed\n", "seed");
+
+            var baseline = PackGit(repoA, GitState(), full: true, Key, Path.Combine(repoA, "p0.synchr"));
+            var bState = Apply(repoB, GitState(), baseline).UpdatedState!;
+
+            var tamperedLedger = bState.Ledger.Select(e => e with { LocalPosition = new string('d', 40) }).ToList();
+            var tampered = bState with { Ledger = tamperedLedger };
+
+            TestGitRepo.Commit(repoA, "c.txt", "cee\n", "add c");
+            var delta = PackGit(repoA, GitState(peerKnown: headA, peerHead: headSeedB), full: false, Key, Path.Combine(repoA, "p1.synchr"));
+
+            var message = ApplyFail(repoB, tampered, delta);
+
+            message.ShouldContain("git diff failed");
+        }
+        finally
+        {
+            Directory.Delete(repoA, true);
+            Directory.Delete(repoB, true);
+        }
+    }
+
+    [Fact]
     public void Apply_PendingScene_BlocksNextApply()
     {
         var repoA = TestGitRepo.Create();

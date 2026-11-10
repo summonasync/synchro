@@ -171,7 +171,53 @@ public class PackServiceTests
     }
 
     [Fact]
-    public void Pack_StalePeerPosition_FailsWithConflict()
+    public void Pack_StagedUncommittedFile_ExcludedFromFullBaseline()
+    {
+        var dir = TestGitRepo.Create();
+        try
+        {
+            TestGitRepo.Commit(dir, "a.txt", "committed\n", "add a");
+            TestGitRepo.Stage(dir, "b.txt", "staged but not committed\n");
+
+            var draft = Pack(dir, GitStore(), full: true);
+
+            var paths = draft.Value.Manifest.Files.Select(f => f.Path).ToList();
+            paths.ShouldBe(["a.txt"]);
+            paths.ShouldNotContain("b.txt");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Pack_PeerPositionOnUnrelatedBranch_FailsWithConflict()
+    {
+        var dir = TestGitRepo.Create();
+        try
+        {
+            TestGitRepo.Commit(dir, "a.txt", "one\n", "first");
+            GitCli.Run(dir, "checkout", "--orphan", "side");
+            GitCli.Run(dir, "add", "-A");
+            GitCli.Run(dir, "commit", "-m", "orphan commit");
+            var orphanSha = GitCli.Run(dir, "rev-parse", "HEAD").Output.Trim();
+            GitCli.Run(dir, "checkout", "main");
+
+            var result = PackService.Pack(dir, GitStore(peerKnown: orphanSha), new PackOptions());
+
+            var fail = result.ShouldBeOfType<Result<PackDraft>.Fail>();
+            fail.Error.Code.ShouldBe("conflict");
+            fail.Error.Message.ShouldContain("history");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Pack_StalePeerPosition_FailsWithMergeBaseError()
     {
         var dir = TestGitRepo.Create();
         try
@@ -182,8 +228,8 @@ public class PackServiceTests
             var result = PackService.Pack(dir, GitStore(peerKnown: foreignSha), new PackOptions());
 
             var fail = result.ShouldBeOfType<Result<PackDraft>.Fail>();
-            fail.Error.Code.ShouldBe("conflict");
-            fail.Error.Message.ShouldContain("history");
+            fail.Error.Code.ShouldBe("invalid");
+            fail.Error.Message.ShouldContain("merge-base");
         }
         finally
         {

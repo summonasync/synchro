@@ -62,7 +62,7 @@ internal static class PackCommand
         var value = packOk.Value;
         var manifest = value.Manifest;
         var target = outPath ?? Path.Combine(root, StorePaths.FolderName, "last-pack-draft.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
         File.WriteAllText(target, JsonSerializer.Serialize(manifest, DraftJsonOptions));
 
         Console.WriteLine(manifest.BasePosition is null

@@ -56,11 +56,15 @@ public static class GitChangeService
 
     public static Result<IReadOnlyList<CommitInfo>> GetCommitLog(string dir, string? baseSha)
     {
-        var args = baseSha is null
-            ? (IReadOnlyList<string>)["log", "--pretty=format:%x1e%H%x00%s%x00", "--name-only", "--no-renames"]
-            : (IReadOnlyList<string>)["log", "--pretty=format:%x1e%H%x00%s%x00", "--name-only", "--no-renames", $"{baseSha}..HEAD"];
-
-        var result = GitRunner.Run(dir, [.. args]);
+        var range = baseSha is null ? "HEAD" : $"{baseSha}..HEAD";
+        var result = GitRunner.Run(
+            dir,
+            "log",
+            "-z",
+            "--pretty=format:%x1e%H%x00%s%x00",
+            "--name-only",
+            "--no-renames",
+            range);
         if (!result.Ok)
         {
             return new Result<IReadOnlyList<CommitInfo>>.Fail(
@@ -70,34 +74,37 @@ public static class GitChangeService
         var commits = new List<CommitInfo>();
         foreach (var record in result.StdOut.Split('\x1e', StringSplitOptions.RemoveEmptyEntries))
         {
-            var lines = record.Split('\n');
-            var header = lines[0].Split('\0');
-            if (header.Length < 2)
+            var tokens = record.Split('\0');
+            if (tokens.Length < 2)
             {
                 continue;
             }
 
-            var files = lines.Skip(1)
-                .Select(l => l.Trim())
-                .Where(l => l.Length > 0)
-                .ToList();
-
             commits.Add(new CommitInfo
             {
-                Sha = header[0],
-                Message = header[1],
-                Files = files
+                Sha = tokens[0],
+                Message = tokens[1],
+                Files = [.. tokens.Skip(2).Select(t => t.TrimStart('\n')).Where(t => t.Length > 0)]
             });
         }
 
         return new Result<IReadOnlyList<CommitInfo>>.Ok(commits);
     }
 
-    public static byte[] GetFileContent(string dir, string path) =>
-        GitRunner.RunBytes(dir, "show", $"HEAD:{path}");
+    public static Result<byte[]> GetFileContent(string dir, string path)
+    {
+        try
+        {
+            return new Result<byte[]>.Ok(GitRunner.RunBytes(dir, "show", $"HEAD:{path}"));
+        }
+        catch (GitCommandException ex)
+        {
+            return new Result<byte[]>.Fail(SyncError.Invalid($"cannot read '{path}' from HEAD: {ex.Message}"));
+        }
+    }
 
-    public static IReadOnlyList<string> GetTrackedFiles(string dir) =>
-        GitRunner.Run(dir, "ls-files", "-z")
+    public static IReadOnlyList<string> GetHeadTreeFiles(string dir) =>
+        GitRunner.Run(dir, "ls-tree", "-r", "-z", "--name-only", "HEAD")
             .StdOut
             .Split('\0', StringSplitOptions.RemoveEmptyEntries);
 }

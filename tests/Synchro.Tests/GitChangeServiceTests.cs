@@ -137,15 +137,16 @@ public class GitChangeServiceTests
     }
 
     [Fact]
-    public void GetTrackedFiles_ListsAllCommittedPaths()
+    public void GetHeadTreeFiles_ListsCommittedTreeOnly()
     {
         var dir = TestGitRepo.Create();
         try
         {
             TestGitRepo.Commit(dir, "src/a.txt", "one\n", "first");
             TestGitRepo.Commit(dir, "src/b.txt", "bee\n", "second");
+            TestGitRepo.Stage(dir, "src/c.txt", "staged only\n");
 
-            GitChangeService.GetTrackedFiles(dir).ShouldBe(["src/a.txt", "src/b.txt"], true);
+            GitChangeService.GetHeadTreeFiles(dir).ShouldBe(["src/a.txt", "src/b.txt"], true);
         }
         finally
         {

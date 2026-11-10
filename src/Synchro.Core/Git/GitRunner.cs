@@ -8,15 +8,26 @@ public sealed record GitResult(int ExitCode, string StdOut, string StdErr)
     public bool Ok => ExitCode == 0;
 }
 
+public sealed class GitCommandException(string message) : Exception(message);
+
 public static class GitRunner
 {
+    private const int TimeoutMs = 30_000;
+
     public static GitResult Run(string workingDirectory, params string[] args)
     {
         var psi = BuildStartInfo(workingDirectory, args);
         using var process = Start(psi);
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
-        process.WaitForExit(30_000);
+
+        if (!process.WaitForExit(TimeoutMs))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException($"git timed out: {string.Join(' ', args)}");
+        }
+
+        process.WaitForExit();
         return new GitResult(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
     }
 
@@ -24,9 +35,25 @@ public static class GitRunner
     {
         var psi = BuildStartInfo(workingDirectory, args);
         using var process = Start(psi);
+        var stderr = process.StandardError.ReadToEndAsync();
         using var output = new MemoryStream();
-        process.StandardOutput.BaseStream.CopyTo(output);
-        process.WaitForExit(30_000);
+        var copy = process.StandardOutput.BaseStream.CopyToAsync(output);
+
+        if (!process.WaitForExit(TimeoutMs))
+        {
+            process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException($"git timed out: {string.Join(' ', args)}");
+        }
+
+        process.WaitForExit();
+        copy.GetAwaiter().GetResult();
+        var errorText = stderr.GetAwaiter().GetResult();
+
+        if (process.ExitCode != 0)
+        {
+            throw new GitCommandException($"git {string.Join(' ', args)} failed: {errorText.Trim()}");
+        }
+
         return output.ToArray();
     }
 
@@ -37,7 +64,6 @@ public static class GitRunner
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            RedirectStandardInput = true,
             UseShellExecute = false
         };
         psi.ArgumentList.Add("-c");

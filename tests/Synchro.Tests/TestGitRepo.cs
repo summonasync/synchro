@@ -28,4 +28,10 @@ public static class TestGitRepo
         GitCli.Run(dir, "commit", "-m", message);
         return GitCli.Run(dir, "rev-parse", "HEAD").Output.Trim();
     }
+
+    public static void Stage(string dir, string path, string content)
+    {
+        File.WriteAllText(Path.Combine(dir, path), content);
+        GitCli.Run(dir, "add", path);
+    }
 }

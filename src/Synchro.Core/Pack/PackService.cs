@@ -39,10 +39,16 @@ public static class PackService
         else if (state.PeerKnownLocalPosition is { } known)
         {
             var ancestor = GitRunner.Run(root, "merge-base", "--is-ancestor", known, "HEAD");
-            if (ancestor.ExitCode != 0)
+            if (ancestor.ExitCode == 1)
             {
                 return new Result<PackDraft>.Fail(SyncError.Conflict(
                     $"peer-known position {known[..Math.Min(12, known.Length)]} is not in this history — was a package applied out of order?"));
+            }
+
+            if (ancestor.ExitCode != 0)
+            {
+                return new Result<PackDraft>.Fail(SyncError.Invalid(
+                    $"git merge-base failed: {ancestor.StdErr.Trim()}"));
             }
 
             baseSha = known;
@@ -55,7 +61,7 @@ public static class PackService
 
         Result<GitChanges> changes = baseSha is null
             ? new Result<GitChanges>.Ok(new GitChanges(
-                GitChangeService.GetTrackedFiles(root),
+                GitChangeService.GetHeadTreeFiles(root),
                 [],
                 []))
             : GitChangeService.GetChanges(root, baseSha);
@@ -80,11 +86,16 @@ public static class PackService
         foreach (var path in changesOk.Value.Added.Concat(changesOk.Value.Modified).OrderBy(p => p, StringComparer.Ordinal))
         {
             var content = GitChangeService.GetFileContent(root, path);
+            if (content is not Result<byte[]>.Ok contentOk)
+            {
+                return new Result<PackDraft>.Fail(((Result<byte[]>.Fail)content).Error);
+            }
+
             files.Add(new PackageFileEntry
             {
                 Path = path,
-                Hash = ContentHash.Compute(content),
-                Content = content
+                Hash = ContentHash.Compute(contentOk.Value),
+                Content = contentOk.Value
             });
         }
 

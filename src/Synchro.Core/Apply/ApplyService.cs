@@ -371,7 +371,7 @@ public static class ApplyService
                     already.Add(path);
                 }
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
             }
         }

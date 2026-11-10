@@ -15,7 +15,7 @@ public static class PackagePaths
                 return SyncError.Invalid("package contains an empty path");
             }
 
-            if (path.IndexOf('\0') >= 0 || path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
             {
                 return SyncError.Invalid($"invalid characters in path: '{path}'");
             }

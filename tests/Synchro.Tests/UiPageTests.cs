@@ -12,7 +12,7 @@ public class UiPageTests
     {
         var allowed = new[] { "/api/status", "/api/log", "/api/scene", "/api/scene/read" };
 
-        var fetchTargets = Regex.Matches(UiPage.Html, "fetch\\('([^']+)")
+        var fetchTargets = Regex.Matches(UiPage.Html, "fetch\\('([^'?]+)")
             .Select(m => m.Groups[1].Value)
             .Distinct()
             .ToList();

@@ -15,13 +15,19 @@ internal static class UiHost
     public static int Run(string[] args)
     {
         var root = Directory.GetCurrentDirectory();
-        var port = DefaultPort;
+        int? portArg = null;
 
         for (var i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--port" && i + 1 < args.Length && int.TryParse(args[++i], out var parsed))
+            if (args[i] == "--port" && i + 1 < args.Length)
             {
-                port = parsed;
+                if (!int.TryParse(args[++i], out var parsed) || parsed is < 1 or > 65535)
+                {
+                    Console.Error.WriteLine($"--port must be a number between 1 and 65535 (got '{args[i]}')");
+                    return 2;
+                }
+
+                portArg = parsed;
             }
             else if (args[i] == "--root" && i + 1 < args.Length)
             {
@@ -33,6 +39,8 @@ internal static class UiHost
                 return 2;
             }
         }
+
+        var port = portArg ?? DefaultPort;
 
         if (!Directory.Exists(root))
         {
@@ -50,11 +58,15 @@ internal static class UiHost
         var tools = new SynchroMcpTools(root);
         var app = builder.Build();
 
-        app.MapGet("/", () => Results.Text(UiPage.Html, "text/html; charset=utf-8"));
-        app.MapGet("/api/status", () => Task.FromResult(Json(tools.Status())));
-        app.MapGet("/api/log", () => Task.FromResult(Json(tools.Log())));
-        app.MapGet("/api/scene", () => Task.FromResult(Json(tools.SceneStatus())));
-        app.MapGet("/api/scene/read", (string path) => Task.FromResult(Json(tools.SceneRead(path))));
+        app.MapGet("/", (HttpContext ctx) =>
+        {
+            ctx.Response.Headers.ContentSecurityPolicy = "default-src 'self' 'unsafe-inline'";
+            return Results.Text(UiPage.Html, "text/html; charset=utf-8");
+        });
+        app.MapGet("/api/status", () => Json(tools.Status()));
+        app.MapGet("/api/log", () => Json(tools.Log()));
+        app.MapGet("/api/scene", () => Json(tools.SceneStatus()));
+        app.MapGet("/api/scene/read", (string path) => Json(tools.SceneRead(path)));
 
         app.Lifetime.ApplicationStarted.Register(() =>
         {

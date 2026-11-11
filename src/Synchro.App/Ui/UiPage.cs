@@ -100,8 +100,10 @@ function row(k, v) { return '<tr><th>' + k + '</th><td>' + v + '</td></tr>'; }
 function cssSafe(s) { return s.replace(/[^a-zA-Z0-9]/g, '_'); }
 function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
 
-load();
-setInterval(load, 15000);
+load().catch(() => {
+  document.getElementById('status').innerHTML = '<span class="err">status unreachable</span>';
+});
+setInterval(() => load().catch(() => { }), 15000);
 </script>
 </body>
 </html>

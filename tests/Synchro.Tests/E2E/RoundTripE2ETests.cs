@@ -115,13 +115,18 @@ public class RoundTripE2ETests
         return new Side(dir, state);
     }
 
-    private static void AssertLedgerInvariants(Side side)
+    private static void AssertLedgerInvariants(Side side, DateTimeOffset? notBefore = null)
     {
         foreach (var evt in side.State.Ledger.Where(e => e.Direction == LedgerDirection.Applied))
         {
             evt.PackageDigest.ShouldNotBeNull();
             evt.PeerPosition.ShouldNotBeNull();
+            evt.AtUtc.ShouldBeGreaterThanOrEqualTo(notBefore ?? DateTimeOffset.MinValue);
             evt.AtUtc.ShouldBeLessThanOrEqualTo(DateTimeOffset.UtcNow);
+            if (side.State.Channel.Mode == SyncMode.Git)
+            {
+                evt.LocalPosition.ShouldNotBeNull();
+            }
         }
 
         if (side.State.Channel.Mode == SyncMode.Plain)
@@ -180,14 +185,23 @@ public class RoundTripE2ETests
                 + " | clientPeerHead=" + (client.State.PeerHeadPosition ?? "null"));
         }
         var clientReport = clientOk.Value;
-        if (clientReport.ScenePending)
-        {
-            // dev's replace chose the dev fork; the delta carries it back and the client's
-            // local rework now diverges — an honest conflict on redelivery
-            clientReport.ConflictPaths.ShouldBe(["lib/core.cs"]);
-            client.Read("lib/core.cs").ShouldBe("core v2 client\n");
-            client.Read("lib/extra.cs").ShouldBe("extra\n");
-        }
+        client.State = clientReport.UpdatedState!;
+
+        // dev's replace chose the dev fork; the redelivered delta honestly conflicts
+        // with the client's local rework — resolved by taking the dev fork
+        clientReport.ScenePending.ShouldBeTrue();
+        clientReport.ConflictPaths.ShouldBe(["lib/core.cs"]);
+        client.Read("lib/core.cs").ShouldBe("core v2 client\n");
+
+        client.State = SceneService.Resolve(client.Dir, client.State, "lib/core.cs", SceneService.OpReplace)
+            .ShouldBeOfType<Result<StoreState>.Ok>().Value;
+        var clientCommitted = SceneService.Commit(client.Dir, client.State, ChannelKey)
+            .ShouldBeOfType<Result<ApplyReport>.Ok>().Value;
+
+        clientCommitted.ScenePending.ShouldBeFalse();
+        client.Read("lib/core.cs").ShouldBe("core v2 dev\n");
+        client.Read("lib/extra.cs").ShouldBe("extra\n");
+        client.Read("lib/resolved.txt").ShouldBe("resolved\n");
 
         AssertLedgerInvariants(dev);
         AssertLedgerInvariants(client);
@@ -254,7 +268,7 @@ public class RoundTripE2ETests
         using var client = PlainSide();
         client.Apply(baseline);
         client.Write("local-only.txt", "my local note\n");
-        var clientAfterOwnPack = client.Pack();
+        client.Pack();
 
         dev.Write("dev-only.txt", "dev note\n");
         var devDelta = dev.Pack();
@@ -290,7 +304,6 @@ public class RoundTripE2ETests
         using var client = PlainSide();
         client.Apply(baseline);
         client.Write("a.txt", "local v1\n");
-        var localState = client.State;
 
         dev.Write("a.txt", "remote v2\n");
         dev.Write("b.txt", "remote b\n");

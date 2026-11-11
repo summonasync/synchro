@@ -38,5 +38,6 @@ public sealed record StoreState
     public string? SentChainRootHash { get; init; }
 
     public int AppliedChainSeq { get; init; }
+    public int PeerAppliedChainSeq { get; init; }
     public PendingSceneState? PendingScene { get; init; }
 }

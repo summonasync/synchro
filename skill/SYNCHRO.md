@@ -37,17 +37,26 @@ If the store already exists you will be told. Do not re-init.
 
 ## Packing a feature batch
 
+CLI vs MCP: the draft/declare/seal three-step flow is **MCP-only**
+(`synchro_pack_draft` → `synchro_pack_declare` → `synchro_pack_seal`).
+The plain CLI `synchro pack` seals immediately — plain-mode names the
+package itself, git-mode writes a draft JSON and expects the MCP flow for
+the full declaration step.
+
 1. **Commit-first** (git-mode): `git status` must be clean or you warn the
    human and pack committed state only.
-2. `synchro pack_draft` (add `--full` for the very first baseline).
-   Read the response: changed files, commit metadata, warnings.
-3. **Declare features** — this is your semantic job. Group the changed files
-   into features the way a reviewer would describe them. For each feature:
+2. **Build the draft** — MCP: `synchro_pack_draft` (add `full=true` for the
+   very first baseline). Read the response: changed files, commit metadata,
+   warnings. CLI: `synchro pack` (plain-mode seals directly; git-mode
+   writes a draft JSON).
+3. **Declare features** (MCP flow) — this is your semantic job. Group the
+   changed files into features the way a reviewer would describe them. For
+   each feature:
    `synchro_pack_declare --name "<short-name>" --description "<what it does, one clear sentence>" --files "<comma-separated paths>"`.
    Every changed file must belong to exactly one feature. The tool rejects
    unknown paths, duplicate feature names and double-declared files.
-4. `synchro_pack_seal` — seals the draft. The output names the `.synchr`
-   file. Hand it to the human for physical transfer.
+4. **Seal** (MCP flow): `synchro_pack_seal` — seals the draft. The output
+   names the `.synchr` file. Hand it to the human for physical transfer.
 5. If nothing changed, the pack fails with "nothing changed" — that is a
    normal, healthy answer. Do not retry.
 

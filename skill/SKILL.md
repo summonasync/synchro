@@ -10,9 +10,10 @@ Quick command map (full procedures in SYNCHRO.md):
 
 | intent | command |
 |--------|---------|
-| build a package draft | `synchro pack_draft` (MCP: synchro_pack_draft) |
-| declare a feature | `synchro_pack_declare --name ... --description ... --files ...` |
-| seal the package | `synchro_pack_seal` |
+| pack (plain-mode: seals directly) | `synchro pack` / `synchro pack --full` |
+| build a draft (MCP, git-mode declarations) | synchro_pack_draft |
+| declare a feature (MCP) | synchro_pack_declare |
+| seal the draft (MCP) | synchro_pack_seal |
 | apply an incoming package | `synchro apply <file.synchr>` (MCP: synchro_apply_start) |
 | inspect a conflict | `synchro scene` / `synchro scene read <path>` |
 | resolve a conflict | `synchro scene resolve <path> <drop\|replace\|merge\|resolved>` |

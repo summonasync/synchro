@@ -15,15 +15,15 @@ mkdir "$WORK/sideA" "$WORK/sideB"
 cd "$WORK/sideA"
 
 step "side A init + key ritual"
-KEY=$(dotnet "$S" init --peer shiva | grep -E '^[0-9a-f]{64}$')
+KEY=$(dotnet "$S" init --peer sideA | grep -E '^[0-9a-f]{64}$')
 echo "v1 feature" > feature.cs
 step "side A baseline pack"
 dotnet "$S" pack --full >/dev/null
 
 cd "$WORK/sideB"
 step "side B init + apply baseline"
-dotnet "$S" init --key "$KEY" --peer khadgar >/dev/null
-dotnet "$S" apply "$(ls -t ../sideA/synchro-*.synchr | head -1)" | grep -q "applied"
+dotnet "$S" init --key "$KEY" --peer sideB >/dev/null
+out=$(dotnet "$S" apply "$(ls -t ../sideA/synchro-*.synchr | head -1)"); echo "$out" | grep -q "applied"
 grep -q "v1 feature" feature.cs
 
 # side B works and packs the return trip
@@ -34,12 +34,12 @@ dotnet "$S" pack >/dev/null
 
 cd "$WORK/sideA"
 step "side A applies the return trip (B's first package is a baseline: content conflict expected)"
-dotnet "$S" apply "$(ls -t ../sideB/synchro-*.synchr | head -1)" | grep -q "CONFLICTS"
+out=$(dotnet "$S" apply "$(ls -t ../sideB/synchro-*.synchr | head -1)"); echo "$out" | grep -q "CONFLICTS"
 grep -q "B rework" .synchro/scene/*/theirs/feature.cs
 
 step "side A resolves: replace on feature.cs"
 dotnet "$S" scene resolve feature.cs replace
-dotnet "$S" scene commit | grep -q "sync state advanced"
+out=$(dotnet "$S" scene commit); echo "$out" | grep -q "sync state advanced"
 grep -q "B rework" feature.cs
 grep -q "b only" bfile.txt
 
@@ -50,12 +50,12 @@ dotnet "$S" pack >/dev/null
 cd "$WORK/sideA"
 echo "A final" > bfile.txt
 step "conflict drill"
-dotnet "$S" apply "$(ls -t ../sideB/synchro-*.synchr | head -1)" | grep -q "CONFLICTS"
+out=$(dotnet "$S" apply "$(ls -t ../sideB/synchro-*.synchr | head -1)"); echo "$out" | grep -q "CONFLICTS"
 
 dotnet "$S" scene | grep -q "bfile.txt"
 step "resolve replace + commit"
 dotnet "$S" scene resolve bfile.txt replace
-dotnet "$S" scene commit | grep -q "sync state advanced"
+out=$(dotnet "$S" scene commit); echo "$out" | grep -q "sync state advanced"
 grep -q "B final" bfile.txt
 
 echo "SMOKE OK — full round trip with conflict resolution completed"

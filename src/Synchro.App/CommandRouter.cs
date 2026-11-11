@@ -1,4 +1,5 @@
 using Synchro.App.Commands;
+using Synchro.App.Mcp;
 
 namespace Synchro.App;
 
@@ -32,9 +33,9 @@ internal static class CommandRouter
             "pack" => PackCommand.Run(args[1..]),
             "apply" => ApplyCommand.Run(args[1..]),
             "scene" => SceneCommand.Run(args[1..]),
+            "serve" => ServerHost.Run(args[1..]),
             "status" => Stub.NotImplemented("status"),
             "log" => Stub.NotImplemented("log"),
-            "serve" => Stub.NotImplemented("serve"),
             _ => WriteUnknown(command)
         };
     }

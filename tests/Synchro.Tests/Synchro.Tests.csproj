@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Synchro.Core\Synchro.Core.csproj" />
+    <ProjectReference Include="..\..\src\Synchro.App\Synchro.App.csproj" />
   </ItemGroup>
 
 </Project>

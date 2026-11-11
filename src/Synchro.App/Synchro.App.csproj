@@ -11,12 +11,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Synchro.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Synchro.Core\Synchro.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="2.4.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
   </ItemGroup>
 
 </Project>

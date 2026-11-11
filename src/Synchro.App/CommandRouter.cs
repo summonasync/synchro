@@ -4,7 +4,7 @@ namespace Synchro.App;
 
 internal static class CommandRouter
 {
-    private static readonly string[] KnownCommands = ["init", "pack", "apply", "status", "log", "serve"];
+    private static readonly string[] KnownCommands = ["init", "pack", "apply", "scene", "status", "log", "serve"];
 
     public static int Run(string[] args)
     {
@@ -31,6 +31,7 @@ internal static class CommandRouter
             "init" => InitCommand.Run(args[1..]),
             "pack" => PackCommand.Run(args[1..]),
             "apply" => ApplyCommand.Run(args[1..]),
+            "scene" => SceneCommand.Run(args[1..]),
             "status" => Stub.NotImplemented("status"),
             "log" => Stub.NotImplemented("log"),
             "serve" => Stub.NotImplemented("serve"),
@@ -44,6 +45,8 @@ internal static class CommandRouter
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
         Console.WriteLine("init [options]        set up the local store (--key <hex> to adopt a peer key)");
         Console.WriteLine("pack [--full] [--out] build a package manifest draft from committed state");
+        Console.WriteLine("apply <package>       apply a sealed package (stages conflicts into a scene)");
+        Console.WriteLine("scene [resolve|commit] work the pending conflict scene");
         Console.WriteLine("help                  show this help");
         Console.WriteLine("run 'synchro <command> --help' for command details");
         return 0;

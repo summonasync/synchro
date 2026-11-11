@@ -185,6 +185,7 @@ public static class ApplyService
                 PendingScene = new PendingSceneState
                 {
                     PackagePath = Path.GetFullPath(packagePath),
+                    Digest = digest,
                     SceneDir = sceneDir,
                     ConflictPaths = conflictPaths,
                     NewPosition = manifest.NewPosition.Display,
@@ -195,7 +196,7 @@ public static class ApplyService
         }
         else
         {
-            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value, baseSha: baseSha);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Git, digest, headSha: headOk.Value);
             warnings.AddRange(advanceWarnings);
             updated = advanced;
         }
@@ -318,6 +319,7 @@ public static class ApplyService
                 PendingScene = new PendingSceneState
                 {
                     PackagePath = Path.GetFullPath(packagePath),
+                    Digest = digest,
                     SceneDir = sceneDir,
                     ConflictPaths = conflictPaths,
                     NewPosition = manifest.NewPosition.Display,
@@ -328,7 +330,7 @@ public static class ApplyService
         }
         else
         {
-            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null, baseSha: null);
+            var (advanced, advanceWarnings) = AdvanceState(root, state, manifest, SyncMode.Plain, digest, headSha: null);
             warnings.AddRange(advanceWarnings);
             updated = advanced;
         }
@@ -422,14 +424,13 @@ public static class ApplyService
         return conflicts;
     }
 
-    private static (StoreState Updated, List<string> Warnings) AdvanceState(
+    internal static (StoreState Updated, List<string> Warnings) AdvanceState(
         string root,
         StoreState state,
         SyncManifest manifest,
         SyncMode mode,
         string digest,
-        string? headSha,
-        string? baseSha)
+        string? headSha)
     {
         var evt = new LedgerEvent
         {
@@ -476,7 +477,7 @@ public static class ApplyService
         return (updated, warnings);
     }
 
-    private static Dictionary<string, byte[]> SnapshotContents(string root, IEnumerable<string> paths)
+    internal static Dictionary<string, byte[]> SnapshotContents(string root, IEnumerable<string> paths)
     {
         var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         foreach (var path in paths)

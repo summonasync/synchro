@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 using Synchro.Core;
 using Synchro.Core.Apply;
-using Synchro.Core.Hashing;
 using Synchro.Core.Pack;
 using Synchro.Core.Package;
 using Synchro.Core.Scene;
@@ -152,6 +151,19 @@ public class SynchroMcpTools(string root)
                 $"declared files not present in the draft: {string.Join(", ", unknown)}"));
         }
 
+        if (_draftManifest.Features.Any(f => f.Name == name))
+        {
+            return JsonError(SyncError.Invalid($"feature '{name}' is already declared"));
+        }
+
+        var covered = _draftManifest.Features.SelectMany(f => f.Files).ToHashSet(StringComparer.Ordinal);
+        var doubleDeclared = declared.Where(covered.Contains).ToList();
+        if (doubleDeclared.Count > 0)
+        {
+            return JsonError(SyncError.Invalid(
+                $"files already covered by another feature: {string.Join(", ", doubleDeclared)}"));
+        }
+
         var features = _draftManifest.Features.ToList();
         features.Add(new FeatureDeclaration
         {
@@ -187,6 +199,7 @@ public class SynchroMcpTools(string root)
         }
 
         var target = outPath ?? DefaultPackageName(state.Value, _draftManifest);
+        target = Path.IsPathRooted(target) ? target : Path.Combine(root, target);
         if (!target.EndsWith(".synchr", StringComparison.OrdinalIgnoreCase))
         {
             target += ".synchr";
@@ -213,6 +226,7 @@ public class SynchroMcpTools(string root)
         "Apply a sealed .synchr package: verifies, checks drift, silently applies non-overlapping features, and stages overlapping or similar ones into a conflict scene. Read the returned report before touching the scene")]
     public string ApplyStart(string packagePath)
     {
+        packagePath = Path.IsPathRooted(packagePath) ? packagePath : Path.Combine(root, packagePath);
         var loaded = LoadStore(out var key);
         if (loaded is not Result<StoreState>.Ok state)
         {
@@ -228,6 +242,8 @@ public class SynchroMcpTools(string root)
         if (ok.Value.UpdatedState is { } updated)
         {
             StoreContainer.Save(StorePaths.Container(root), key, updated);
+            // the draft was built on a position this apply may have moved forward
+            _draftManifest = null;
         }
 
         return JsonSerializer.Serialize(new
@@ -292,6 +308,11 @@ public class SynchroMcpTools(string root)
             return JsonError(SyncError.Conflict("no pending conflict scene"));
         }
 
+        if (!scene.ConflictPaths.Contains(path))
+        {
+            return JsonError(SyncError.Invalid($"'{path}' is not part of this scene"));
+        }
+
         string? ReadSafe(string baseDir)
         {
             var file = Path.Combine(baseDir, path.Replace('/', Path.DirectorySeparatorChar));
@@ -333,6 +354,7 @@ public class SynchroMcpTools(string root)
         }
 
         StoreContainer.Save(StorePaths.Container(root), key, ok.Value);
+        _draftManifest = null;
         var unresolved = SceneService.Status(ok.Value) is Result<SceneStatus>.Ok s
             ? s.Value.Unresolved
             : [];
@@ -369,6 +391,7 @@ public class SynchroMcpTools(string root)
         if (ok.Value.UpdatedState is { } updated)
         {
             StoreContainer.Save(StorePaths.Container(root), key, updated);
+            _draftManifest = null;
         }
 
         return JsonSerializer.Serialize(new

@@ -36,7 +36,7 @@ public class McpToolsTests
 
             var doc = Parse(json);
             doc.RootElement.GetProperty("ok").GetBoolean().ShouldBeFalse();
-            doc.RootElement.GetProperty("error").GetString().ShouldContain("synchro init");
+            doc.RootElement.GetProperty("error").GetString().ShouldNotBeNull().ShouldContain("synchro init");
         }
         finally
         {
@@ -75,6 +75,78 @@ public class McpToolsTests
         finally
         {
             Directory.Delete(dirA, true);
+        }
+    }
+
+    [Fact]
+    public void PackDeclare_UnknownAndDuplicateFiles_AreRejected()
+    {
+        var dirA = TempDir.Create();
+        try
+        {
+            InitSide(dirA);
+            Write(dirA, "a.txt", "alpha\n");
+            var tools = new SynchroMcpTools(dirA);
+
+            tools.PackDraft();
+            var unknownJson = tools.PackDeclare("docs", "d", "ghost.txt");
+            Parse(unknownJson).RootElement.GetProperty("ok").GetBoolean().ShouldBeFalse();
+
+            var okJson = tools.PackDeclare("docs", "d", "a.txt");
+            Parse(okJson).RootElement.GetProperty("ok").GetBoolean().ShouldBeTrue();
+
+            var duplicateNameJson = tools.PackDeclare("docs", "again", "a.txt");
+            Parse(duplicateNameJson).RootElement.GetProperty("ok").GetBoolean().ShouldBeFalse();
+
+            tools.PackDraft();
+            var reDraftJson = tools.PackDeclare("docs", "d", "a.txt");
+            Parse(reDraftJson).RootElement.GetProperty("ok").GetBoolean().ShouldBeTrue();
+        }
+        finally
+        {
+            Directory.Delete(dirA, true);
+        }
+    }
+
+    [Fact]
+    public void ApplyStart_InvalidatesStaleDraft()
+    {
+        var dirA = TempDir.Create();
+        var dirB = TempDir.Create();
+        try
+        {
+            var keyHex = InitSide(dirA);
+            InitSide(dirB, keyHex);
+            Write(dirA, "a.txt", "alpha\n");
+            var toolsA = new SynchroMcpTools(dirA);
+            var toolsB = new SynchroMcpTools(dirB);
+
+            toolsA.PackDraft();
+            var pkg1Json = toolsA.PackSeal();
+            var pkg1 = Parse(pkg1Json).RootElement.GetProperty("package").GetString()!;
+            toolsB.ApplyStart(pkg1);
+
+            File.WriteAllText(Path.Combine(dirA, "a.txt"), "alpha2\n");
+            var stateA1 = PackService.Pack(dirA, PlainStore(), new PackOptions())
+                .ShouldBeOfType<Result<PackDraft>.Ok>().Value.UpdatedState!;
+            File.WriteAllText(Path.Combine(dirA, "b.txt"), "bee\n");
+            var pkg2 = Path.Combine(dirA, "s2.synchr");
+            var draft2 = PackService.Pack(dirA, stateA1, new PackOptions())
+                .ShouldBeOfType<Result<PackDraft>.Ok>().Value;
+            PackageSealer.Seal(pkg2, Convert.FromHexString(keyHex), draft2.Manifest);
+
+            var toolsBBefore = toolsB.PackDraft();
+            Parse(toolsBBefore).RootElement.GetProperty("ok").GetBoolean().ShouldBeTrue();
+
+            toolsB.ApplyStart(pkg2);
+
+            var sealedAfter = toolsB.PackSeal();
+            Parse(sealedAfter).RootElement.GetProperty("ok").GetBoolean().ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(dirA, true);
+            Directory.Delete(dirB, true);
         }
     }
 
@@ -150,5 +222,4 @@ public class McpToolsTests
         AppliedContents = []
     };
 
-    private static byte[] Key() => RandomNumberGenerator.GetBytes(32);
 }

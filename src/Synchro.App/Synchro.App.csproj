@@ -14,4 +14,8 @@
     <ProjectReference Include="..\Synchro.Core\Synchro.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.4.0" />
+  </ItemGroup>
+
 </Project>

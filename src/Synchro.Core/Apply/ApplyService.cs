@@ -18,10 +18,10 @@ public static class ApplyService
         }
 
         var manifest = manifestOk.Value;
-        if (manifest.Mode != state.Channel.Mode)
+        if (manifest.Mode == SyncMode.Git && state.Channel.Mode == SyncMode.Plain)
         {
-            return new Result<ApplyReport>.Fail(
-                SyncError.Invalid($"package mode '{manifest.Mode}' does not match store mode '{state.Channel.Mode}'"));
+            return new Result<ApplyReport>.Fail(SyncError.Invalid(
+                "git-mode package carries sha positions — cannot apply onto a plain (non-repository) store"));
         }
 
         var pathError = PackagePaths.Validate(
@@ -39,6 +39,25 @@ public static class ApplyService
         }
 
         var digest = SceneStaging.Digest(packagePath);
+
+        if (manifest.Mode == SyncMode.Plain && IsRedelivery(root, manifest) && manifest.NewPosition is ChainPosition redelivered)
+        {
+            // redelivery doubles as the ack: record the peer's outgoing position even
+            // though there is nothing new to write
+            var acked = state with { AppliedChainSeq = Math.Max(state.AppliedChainSeq, redelivered.Seq) };
+            var noopReport = AlreadyApplied().Value;
+            return new Result<ApplyReport>.Ok(new ApplyReport
+            {
+                AppliedFiles = noopReport.AppliedFiles,
+                AppliedDeletions = noopReport.AppliedDeletions,
+                ConflictPaths = noopReport.ConflictPaths,
+                Warnings = noopReport.Warnings.Append("package already applied — redelivery recorded").ToList(),
+                AlreadyApplied = true,
+                ScenePending = false,
+                UpdatedState = acked
+            });
+        }
+
         return manifest.Mode == SyncMode.Git
             ? ApplyGit(root, state, manifest, packagePath, digest)
             : ApplyPlain(root, state, manifest, packagePath, digest);
@@ -238,7 +257,7 @@ public static class ApplyService
             if (baseSeq != state.AppliedChainSeq)
             {
                 return new Result<ApplyReport>.Fail(SyncError.Conflict(
-                    $"package builds on chain #{baseSeq}, this store is at #{state.AppliedChainSeq} — out-of-order or lost package"));
+                    $"package builds on chain #{baseSeq}, this store is at chain #{state.AppliedChainSeq} — out-of-order or lost package"));
             }
         }
 
@@ -249,9 +268,16 @@ public static class ApplyService
         }
 
         var incomingByPath = manifest.Files.ToDictionary(f => f.Path, f => f, StringComparer.Ordinal);
+        var driftBase = state.SentFileHashes.Count > 0 ? state.SentFileHashes : state.AppliedFileHashes;
         var driftedCandidates = isBaseline
             ? BaselineContentConflicts(root, incomingByPath)
-            : LocalDrift(scanOk.Value, state.AppliedFileHashes);
+            : LocalDrift(scanOk.Value, driftBase);
+
+        // locally added files absent from the drift base: conflict only when their content
+        // differs from the incoming version — identical additions apply silently
+        driftedCandidates.ExceptWith(
+            incomingByPath.Keys.Where(p => File.Exists(Path.Combine(root, p.Replace('/', Path.DirectorySeparatorChar))))
+                .Where(p => ContentHash.Compute(File.ReadAllBytes(Path.Combine(root, p.Replace('/', Path.DirectorySeparatorChar)))) == incomingByPath[p].Hash));
         // re-apply after a mid-apply failure: files already carrying the package content
         // are recognised as applied instead of escalating to a phantom conflict
         var drifted = driftedCandidates
@@ -396,6 +422,39 @@ public static class ApplyService
         return drifted;
     }
 
+    // idempotent redelivery: every incoming file already on disk with the package's exact
+    // content and every deletion already gone — the peer re-sent what we already have
+    private static bool IsRedelivery(string root, SyncManifest manifest)
+    {
+        if (manifest.Files.Count == 0 && manifest.Deletions.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var entry in manifest.Files)
+        {
+            var localPath = Path.Combine(root, entry.Path.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(localPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (ContentHash.Compute(File.ReadAllBytes(localPath)) != entry.Hash)
+                {
+                    return false;
+                }
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
+        return manifest.Deletions.All(d => !File.Exists(Path.Combine(root, d.Replace('/', Path.DirectorySeparatorChar))));
+    }
+
     private static HashSet<string> BaselineContentConflicts(
         string root, Dictionary<string, PackageFileEntry> incoming)
     {
@@ -445,6 +504,10 @@ public static class ApplyService
 
         var ackSha = mode == SyncMode.Git && manifest.AckPosition is GitPosition ack ? ack.Sha : null;
 
+        var newChainSeq = mode == SyncMode.Plain && manifest.NewPosition is ChainPosition appliedChain
+            ? appliedChain.Seq
+            : state.AppliedChainSeq;
+
         var updated = state with
         {
             Ledger = [.. state.Ledger, evt],
@@ -454,9 +517,8 @@ public static class ApplyService
             PeerKnownLocalPosition = mode == SyncMode.Git
                 ? ackSha ?? state.PeerKnownLocalPosition
                 : state.PeerKnownLocalPosition,
-            AppliedChainSeq = mode == SyncMode.Plain && manifest.NewPosition is ChainPosition chain
-                ? chain.Seq
-                : state.AppliedChainSeq
+            SentChainSeq = Math.Max(state.SentChainSeq, newChainSeq),
+            AppliedChainSeq = newChainSeq
         };
 
         var warnings = new List<string>();
@@ -494,8 +556,8 @@ public static class ApplyService
         return contents;
     }
 
-    private static Result<ApplyReport> AlreadyApplied() =>
-        new Result<ApplyReport>.Ok(new ApplyReport
+    private static Result<ApplyReport>.Ok AlreadyApplied() =>
+        new(new ApplyReport
         {
             AppliedFiles = [],
             AppliedDeletions = [],

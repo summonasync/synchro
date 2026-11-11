@@ -223,7 +223,9 @@ public class ApplyPlainTests
 
             var ok = second.ShouldBeOfType<Result<ApplyReport>.Ok>();
             ok.Value.AlreadyApplied.ShouldBeTrue();
-            ok.Value.UpdatedState.ShouldBeNull();
+            ok.Value.UpdatedState.ShouldNotBeNull();
+            ok.Value.UpdatedState.AppliedChainSeq.ShouldBe(1);
+            ok.Value.Warnings.ShouldContain(w => w.Contains("redelivery"));
         }
         finally
         {

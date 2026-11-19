@@ -1,8 +1,13 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Synchro.App.Mcp;
 
@@ -10,7 +15,7 @@ namespace Synchro.App.Ui;
 
 internal static class UiHost
 {
-    private const int DefaultPort = 7741;
+    private const string FriendlyHost = "synchro.localhost";
 
     public static int Run(string[] args)
     {
@@ -21,9 +26,9 @@ internal static class UiHost
         {
             if (args[i] == "--port" && i + 1 < args.Length)
             {
-                if (!int.TryParse(args[++i], out var parsed) || parsed is < 1 or > 65535)
+                if (!int.TryParse(args[++i], out var parsed) || parsed is < 0 or > 65535)
                 {
-                    Console.Error.WriteLine($"--port must be a number between 1 and 65535 (got '{args[i]}')");
+                    Console.Error.WriteLine($"--port must be a number between 0 and 65535, 0 picks a free port (got '{args[i]}')");
                     return 2;
                 }
 
@@ -40,8 +45,6 @@ internal static class UiHost
             }
         }
 
-        var port = portArg ?? DefaultPort;
-
         if (!Directory.Exists(root))
         {
             Console.Error.WriteLine($"target directory does not exist: '{root}'");
@@ -49,36 +52,121 @@ internal static class UiHost
         }
 
         root = Path.GetFullPath(root);
-        var url = $"http://127.0.0.1:{port}";
 
+        var app = BuildHost(root, portArg ?? 0);
+        app.Run();
+        return 0;
+    }
+
+    internal static WebApplication BuildHost(string root, int port)
+    {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls(url);
+        builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
+        var store = new FixtureUiStore();
         var tools = new SynchroMcpTools(root);
         var app = builder.Build();
 
-        app.MapGet("/", (HttpContext ctx) =>
+        app.Use((ctx, next) =>
         {
             ctx.Response.Headers.ContentSecurityPolicy = "default-src 'self' 'unsafe-inline'";
-            return Results.Text(UiPage.Html, "text/html; charset=utf-8");
+            return next();
         });
+
+        app.MapGet("/", () => Html(UiPages.Dashboard(store)));
+        app.MapGet("/pack", () => Html(UiPage.Html));
+
+        app.MapGet("/slave/{name}/history", (string name) =>
+        {
+            if (!store.GetSlaves().Any(s => s.Name == name))
+            {
+                return UnknownSlave(name);
+            }
+
+            return Html(UiPages.History(name, store.GetHistory(name)));
+        });
+
+        app.MapGet("/slave/{name}/inbox", (string name) =>
+        {
+            var slave = store.GetSlaves().FirstOrDefault(s => s.Name == name);
+            return slave is null ? UnknownSlave(name) : Html(UiPages.Inbox(slave));
+        });
+
+        app.MapGet("/slave/{name}/conflicts", (string name) =>
+        {
+            var scene = store.GetConflicts(name);
+            return scene is null ? UnknownSlave(name) : Html(UiPages.Conflicts(scene));
+        });
+
+        app.MapPost("/slave/{name}/conflicts/resolve", async (string name, HttpRequest request) =>
+        {
+            var form = await request.ReadFormAsync();
+            var path = form["path"].ToString();
+            if (path.Length > 0)
+            {
+                store.Resolve(name, path, form["op"].ToString());
+            }
+
+            return Results.Redirect($"/slave/{Uri.EscapeDataString(name)}/conflicts");
+        });
+
         app.MapGet("/api/status", () => Json(tools.Status()));
         app.MapGet("/api/log", () => Json(tools.Log()));
         app.MapGet("/api/scene", () => Json(tools.SceneStatus()));
         app.MapGet("/api/scene/read", (string path) => Json(tools.SceneRead(path)));
 
-        app.Lifetime.ApplicationStarted.Register(() =>
-        {
-            Console.WriteLine($"synchro ui: serving {root} at {url} (Ctrl+C to stop)");
-            TryOpenBrowser(url);
-        });
+        app.Lifetime.ApplicationStarted.Register(() => Announce(app, root));
 
-        app.Run();
+        return app;
+    }
+
+    private static IResult Html(string markup) => Results.Text(markup, "text/html; charset=utf-8");
+
+    private static IResult Json(string json) => Results.Text(json, "application/json; charset=utf-8");
+
+    private static IResult UnknownSlave(string name) =>
+        Results.Text($"unknown slave '{name}'", "text/plain; charset=utf-8", statusCode: 404);
+
+    private static void Announce(WebApplication app, string root)
+    {
+        var port = BoundPort(app);
+        var display = $"http://{DisplayHost(port)}";
+        Console.WriteLine($"synchro ui: serving {root} at {display} (Ctrl+C to stop)");
+        TryOpenBrowser(display);
+    }
+
+    private static int BoundPort(WebApplication app)
+    {
+        var server = app.Services.GetRequiredService<IServer>();
+        var addresses = server.Features.Get<IServerAddressesFeature>()?.Addresses;
+        foreach (var address in addresses ?? [])
+        {
+            if (Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.IsLoopback)
+            {
+                return uri.Port;
+            }
+        }
+
         return 0;
     }
 
-    private static IResult Json(string json) => Results.Text(json, "application/json; charset=utf-8");
+    private static string DisplayHost(int port)
+    {
+        try
+        {
+            var probe = Dns.GetHostAddressesAsync(FriendlyHost);
+            if (probe.Wait(250) && probe.Result.Any(IPAddress.IsLoopback))
+            {
+                return $"{FriendlyHost}:{port}";
+            }
+        }
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException)
+        {
+        }
+
+        return $"127.0.0.1:{port}";
+    }
 
     private static void TryOpenBrowser(string url)
     {

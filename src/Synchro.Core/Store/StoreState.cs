@@ -22,6 +22,42 @@ public sealed record LedgerEvent
     public required string? PackageDigest { get; init; }
 }
 
+public enum SyncDirection
+{
+    MasterToSlave,
+    SlaveToMaster
+}
+
+public enum ConflictWinner
+{
+    Master,
+    Slave
+}
+
+public sealed record SlaveConfig
+{
+    public required string Name { get; init; }
+    public required string Root { get; init; }
+    public required string SyncBranch { get; init; }
+    public required string BaseBranch { get; init; }
+    public required DateTimeOffset CreatedAtUtc { get; init; }
+}
+
+public sealed record SyncConflict
+{
+    public required string Path { get; init; }
+    public required ConflictWinner Winner { get; init; }
+}
+
+public sealed record SyncHistoryRecord
+{
+    public required DateTimeOffset AtUtc { get; init; }
+    public required SyncDirection Direction { get; init; }
+    public required int FilesChanged { get; init; }
+    public required IReadOnlyList<SyncConflict> Conflicts { get; init; }
+    public required bool RolledBack { get; init; }
+}
+
 public sealed record StoreState
 {
     public required int SchemaVersion { get; init; }
@@ -40,4 +76,8 @@ public sealed record StoreState
     public int AppliedChainSeq { get; init; }
     public int PeerAppliedChainSeq { get; init; }
     public PendingSceneState? PendingScene { get; init; }
+
+    public Dictionary<string, SlaveConfig> Slaves { get; init; } = [];
+    public Dictionary<string, byte[]> LedgerHints { get; init; } = [];
+    public Dictionary<string, IReadOnlyList<SyncHistoryRecord>> SyncHistory { get; init; } = [];
 }

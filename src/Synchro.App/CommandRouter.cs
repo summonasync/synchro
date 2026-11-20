@@ -6,7 +6,8 @@ namespace Synchro.App;
 
 internal static class CommandRouter
 {
-    private static readonly string[] KnownCommands = ["init", "pack", "apply", "scene", "status", "log", "serve"];
+    private static readonly string[] KnownCommands =
+        ["add", "init", "pack", "apply", "scene", "rollback", "sync", "status", "log", "serve"];
 
     public static int Run(string[] args)
     {
@@ -30,14 +31,17 @@ internal static class CommandRouter
 
         return command switch
         {
+            "add" => AddCommand.Run(args[1..]),
             "init" => InitCommand.Run(args[1..]),
             "pack" => PackCommand.Run(args[1..]),
             "apply" => ApplyCommand.Run(args[1..]),
             "scene" => SceneCommand.Run(args[1..]),
+            "rollback" => RollbackCommand.Run(args[1..]),
+            "sync" => SyncCommand.Run(args[1..]),
             "ui" => UiHost.Run(args[1..]),
             "serve" => ServerHost.Run(args[1..]),
-            "status" => Stub.NotImplemented("status"),
-            "log" => Stub.NotImplemented("log"),
+            "status" => StatusCommand.Run(args[1..]),
+            "log" => LogCommand.Run(args[1..]),
             _ => WriteUnknown(command)
         };
     }
@@ -46,10 +50,15 @@ internal static class CommandRouter
     {
         Console.WriteLine("usage: synchro <command> [options]");
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
+        Console.WriteLine("add slave <path>      register a slave repo for direct sync");
         Console.WriteLine("init [options]        set up the local store (--key <hex> to adopt a peer key)");
         Console.WriteLine("pack [--full] [--out] build a package manifest draft from committed state");
         Console.WriteLine("apply <package>       apply a sealed package (stages conflicts into a scene)");
         Console.WriteLine("scene [resolve|commit] work the pending conflict scene");
+        Console.WriteLine("rollback [<slave>]    discard the sync inbox and return to the base branch");
+        Console.WriteLine("sync [<slave>] [--yes] bidirectional sync with a slave (master wins conflicts by default)");
+        Console.WriteLine("status [<slave>]      per-slave config, ledger hints, inbox state");
+        Console.WriteLine("log [<slave>]         sync history, newest first");
         Console.WriteLine("help                  show this help");
         Console.WriteLine("run 'synchro <command> --help' for command details");
         return exitCode;

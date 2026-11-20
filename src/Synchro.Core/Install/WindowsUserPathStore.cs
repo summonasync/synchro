@@ -47,7 +47,7 @@ public sealed class WindowsUserPathStore : IUserPathStore
             {
                 kind = key.GetValueKind(PathValueName);
             }
-            catch (Exception ex) when (ex is IOException or System.Security.SecurityException)
+            catch (Exception ex) when (WindowsPathValueKind.ProbeFailureDefaultsToExpandString(ex))
             {
                 kind = RegistryValueKind.ExpandString;
             }

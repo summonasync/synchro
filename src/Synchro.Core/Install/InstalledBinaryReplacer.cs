@@ -16,24 +16,20 @@ public static class InstalledBinaryReplacer
             if (!File.Exists(targetPath) && !Directory.Exists(targetPath))
             {
                 File.Move(staged, targetPath);
-                return PlainReplace();
+                return Placed(cleanupPending: !DeleteAny(targetPath + OldSuffix));
             }
 
             try
             {
                 File.Move(staged, targetPath, overwrite: true);
-                return PlainReplace();
+                return Placed();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 var retired = targetPath + OldSuffix;
                 MoveAny(targetPath, retired);
                 File.Move(staged, targetPath);
-                return new Result<ReplaceOutcome>.Ok(new ReplaceOutcome
-                {
-                    UsedLockedTargetFallback = true,
-                    OldCleanupPending = !DeleteAny(retired)
-                });
+                return Placed(fallback: true, cleanupPending: !DeleteAny(retired));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -54,13 +50,20 @@ public static class InstalledBinaryReplacer
         }
     }
 
-    private static Result<ReplaceOutcome> PlainReplace() =>
-        new Result<ReplaceOutcome>.Ok(new ReplaceOutcome { UsedLockedTargetFallback = false, OldCleanupPending = false });
+    private static Result<ReplaceOutcome> Placed(bool fallback = false, bool cleanupPending = false) =>
+        new Result<ReplaceOutcome>.Ok(new ReplaceOutcome
+        {
+            UsedLockedTargetFallback = fallback,
+            OldCleanupPending = cleanupPending
+        });
 
     private static void CleanupStale(string targetPath)
     {
         DeleteAny(targetPath + NewSuffix);
-        DeleteAny(targetPath + OldSuffix);
+        if (File.Exists(targetPath) || Directory.Exists(targetPath))
+        {
+            DeleteAny(targetPath + OldSuffix);
+        }
     }
 
     private static bool DeleteAny(string path)

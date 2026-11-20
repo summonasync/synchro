@@ -111,6 +111,51 @@ public class InstalledBinaryReplacerTests
     }
 
     [Fact]
+    public void Replace_WhenRunFailsBeforePlacement_KeepsRecoveryArtifactForNextRun()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var target = Path.Combine(dir, "synchro");
+            File.WriteAllText(target + ".old", "previous-bits");
+
+            var replace = InstalledBinaryReplacer.Replace(Path.Combine(dir, "ghost"), target);
+
+            replace.ShouldBeOfType<Result<ReplaceOutcome>.Fail>();
+            File.Exists(target).ShouldBeFalse();
+            File.ReadAllText(target + ".old").ShouldBe("previous-bits");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public void Replace_WhenTargetMissingWithRecoveryArtifact_PlacesIncomingAndConsumesRecovery()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var incoming = Path.Combine(dir, "incoming");
+            var target = Path.Combine(dir, "synchro");
+            File.WriteAllText(incoming, "payload-6");
+            File.WriteAllText(target + ".old", "previous-bits");
+
+            var outcome = Replace(incoming, target);
+
+            outcome.UsedLockedTargetFallback.ShouldBeFalse();
+            outcome.OldCleanupPending.ShouldBeFalse();
+            File.ReadAllText(target).ShouldBe("payload-6");
+            File.Exists(target + ".old").ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void Replace_WhenIncomingMissing_Fails()
     {
         var dir = TempDir.Create();

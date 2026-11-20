@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Synchro.Core.Landing;
+using Synchro.Core.Store;
 
 namespace Synchro.App.Ui;
 
@@ -34,6 +36,7 @@ internal static class UiPages
   .sides .side h4 { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 4px; }
   button { font-family: inherit; font-size: 12px; background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 4px 12px; cursor: pointer; margin-right: 6px; }
   button:hover { background: #30363d; }
+  form.inline { display: inline; }
 """;
 
     public static string Dashboard(IUiStore store)
@@ -54,12 +57,60 @@ internal static class UiPages
     <tr><th>inbox (master)</th><td>{InboxCell(slave.MasterInbox)}</td></tr>
     <tr><th>last op</th><td>{Esc(slave.LastOperation)}</td></tr>
   </table>
-  <p class="links"><a href="/slave/{Url(slave.Name)}/history">history</a><a href="/slave/{Url(slave.Name)}/inbox">inbox</a><a href="/slave/{Url(slave.Name)}/conflicts">conflicts</a></p>
+  <p class="links"><a href="/slave/{Url(slave.Name)}/history">history</a><a href="/slave/{Url(slave.Name)}/inbox">inbox</a><a href="/slave/{Url(slave.Name)}/conflicts">conflicts</a>
+    <form class="inline" method="post" action="/slave/{Url(slave.Name)}/sync"><button>sync now</button></form>
+  </p>
 </section>
 """);
         }
 
         return Layout("synchro — dashboard", "<h2>Slaves</h2>" + sb.ToString());
+    }
+
+    public static string SyncLive(string slaveName, UiSyncRunner sync)
+    {
+        var state = sync.Running ? "<span class=\"pill pending\">running</span>"
+            : sync.Error is not null ? "<span class=\"err\">failed</span>"
+            : "<span class=\"pill clean\">idle</span>";
+        var auto = sync.Running ? "<script>setTimeout(function(){location.reload()},1500);</script>" : "";
+        var logLines = string.Join("\n", sync.Log.Select(Esc));
+
+        var body = $"""
+<h2>Sync · {Esc(slaveName)} {state}</h2>
+<pre>{logLines}</pre>
+""";
+
+        if (sync.Report is { } report)
+        {
+            var conflicts = report.Conflicts.Count == 0
+                ? "<span class=\"ok\">none</span>"
+                : string.Join("<br>", report.Conflicts.Select(c =>
+                    $"{Esc(c.Path)} — {(c.Winner == ConflictWinner.Master ? "master wins" : "slave wins")}"));
+            var landing = Landing("slave inbox", report.ToSlave) + Landing("master inbox", report.ToMaster);
+            var skipped = report.AlreadyCommitted.Count == 0
+                ? string.Empty
+                : $"<tr><th>skipped</th><td>{Esc(string.Join(", ", report.AlreadyCommitted))}</td></tr>";
+            body += $"""
+<h2>Report</h2>
+<table>
+  <tr><th>conflicts</th><td>{conflicts}</td></tr>
+  {skipped}
+  {landing}
+</table>
+""";
+        }
+
+        if (sync.Error is { } error)
+        {
+            body += $"<p class=\"err\">{Esc(error)}</p>";
+        }
+
+        body += "<p class=\"links\"><a href=\"/\">dashboard</a></p>";
+        return Layout($"synchro — sync {slaveName}", body, auto);
+
+        static string Landing(string label, LandingReport? report) => report is null
+            ? string.Empty
+            : $"<tr><th>{label}</th><td>branch '{Esc(report.Branch)}' — {report.WrittenFiles.Count} written, {report.DeletedFiles.Count} deleted</td></tr>";
     }
 
     public static string History(string slaveName, IReadOnlyList<HistoryEntryView> events)
@@ -86,41 +137,53 @@ internal static class UiPages
         return Layout($"synchro — {slave.Name} inbox", $"<h2>Pending inbox · {Esc(slave.Name)}</h2>{body}");
     }
 
-    public static string Conflicts(SlaveConflictView scene)
+    public static string Conflicts(string slaveName, SlaveConflictView? scene, UiSyncRunner sync)
     {
         var sb = new StringBuilder();
-        foreach (var conflict in scene.Paths)
+
+        if (sync.ActiveSlave == slaveName && sync.Running && sync.Pending.FirstOrDefault() is { } active)
         {
-            var pill = conflict.Resolution == "unresolved"
-                ? "<span class=\"pill pending\">unresolved</span>"
-                : $"<span class=\"pill resolved\">{Esc(conflict.Resolution)}</span>";
-            var form = conflict.Resolution == "unresolved"
-                ? $"""
-<form method="post" action="/slave/{Url(scene.SlaveName)}/conflicts/resolve">
-  <input type="hidden" name="path" value="{Esc(conflict.Path)}" />
-  <button name="op" value="drop">drop</button>
-  <button name="op" value="replace">replace</button>
-  <button name="op" value="merge">merge</button>
-</form>
-"""
-                : "";
             sb.Append($"""
 <section class="card">
-  <h3>{Esc(conflict.Path)}{pill}</h3>
+  <h3>{Esc(active.Path)}<span class="pill pending">awaiting your call</span></h3>
   <div class="sides">
-    <div class="side"><h4>theirs</h4><pre>{Esc(conflict.Theirs)}</pre></div>
-    <div class="side"><h4>local</h4><pre>{Esc(conflict.Local)}</pre></div>
-    <div class="side"><h4>base</h4><pre>{Esc(conflict.Base)}</pre></div>
+    <div class="side"><h4>master</h4><pre>{Esc(active.MasterContent)}</pre></div>
+    <div class="side"><h4>slave</h4><pre>{Esc(active.SlaveContent)}</pre></div>
   </div>
-  {form}
+  <form method="post" action="/slave/{Url(slaveName)}/conflicts/answer">
+    <input type="hidden" name="path" value="{Esc(active.Path)}" />
+    <button name="winner" value="master">master wins</button>
+    <button name="winner" value="slave">slave wins</button>
+  </form>
 </section>
 """);
         }
+        else if (sync.ActiveSlave == slaveName && sync.Running)
+        {
+            sb.Append("<p>sync is running — conflicts appear here as they surface.</p>");
+        }
 
-        return Layout($"synchro — {scene.SlaveName} conflicts", $"<h2>Conflict scene · {Esc(scene.SlaveName)}</h2>{sb}");
+        if (scene is not null)
+        {
+            foreach (var conflict in scene.Paths)
+            {
+                sb.Append($"""
+<section class="card">
+  <h3>{Esc(conflict.Path)}<span class="pill resolved">{Esc(conflict.Resolution)}</span></h3>
+</section>
+""");
+            }
+        }
+
+        if (sb.Length == 0)
+        {
+            sb.Append("<span class=\"ok\">no conflicts recorded</span>");
+        }
+
+        return Layout($"synchro — {slaveName} conflicts", $"<h2>Conflicts · {Esc(slaveName)}</h2>{sb}");
     }
 
-    private static string Layout(string title, string body) => $"""
+    private static string Layout(string title, string body, string? extraHead = null) => $"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -128,6 +191,7 @@ internal static class UiPages
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{Esc(title)}</title>
 <style>{Style}</style>
+{extraHead}
 </head>
 <body>
 <h1>SYNCHRO</h1>

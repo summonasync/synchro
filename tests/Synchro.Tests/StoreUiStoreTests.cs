@@ -102,8 +102,9 @@ public class StoreUiStoreTests : IDisposable
         history[0].Direction.ShouldBe("slave → master");
         history[0].AtUtc.ShouldBeGreaterThanOrEqualTo(history[1].AtUtc);
         history[1].FileCount.ShouldBe(2);
-        history[0].ConflictResolution.ShouldNotBeNull();
-        history[0].ConflictResolution.ShouldContain("src/Program.cs (slave wins)");
+        var resolution = history[0].ConflictResolution;
+        resolution.ShouldNotBeNull();
+        resolution.ShouldContain("src/Program.cs (slave wins)");
     }
 
     [Fact]

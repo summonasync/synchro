@@ -89,7 +89,7 @@ public class UiHostBindingTests
 
     private static async Task<(Microsoft.AspNetCore.Builder.WebApplication App, int Port)> StartHostAsync()
     {
-        var app = UiHost.BuildHost(Directory.GetCurrentDirectory(), 0, openBrowser: false);
+        var app = UiHost.BuildHost(Directory.GetCurrentDirectory(), 0, openBrowser: false, new FixtureUiStore());
         await app.StartAsync();
 
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses ?? [];

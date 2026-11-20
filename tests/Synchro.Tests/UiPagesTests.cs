@@ -45,15 +45,16 @@ public class UiPagesTests
     }
 
     [Fact]
-    public void Inbox_RendersBranchDirtyCountAndLastOp()
+    public void Inbox_RendersBothInboxesAndLastOp()
     {
         var slave = _store.GetSlaves().Single(s => s.Name == "feature-ui");
 
         var page = UiPages.Inbox(slave);
 
         page.ShouldContain("Pending inbox · feature-ui");
-        page.ShouldContain("<th>dirty files</th>");
-        page.ShouldContain("pull at 08:04 utc");
+        page.ShouldContain("<th>slave inbox</th>");
+        page.ShouldContain("<th>master inbox</th>");
+        page.ShouldContain("2026-11-20 08:04:00Z master → slave");
     }
 
     [Fact]

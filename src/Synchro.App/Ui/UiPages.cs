@@ -41,19 +41,18 @@ internal static class UiPages
         var sb = new StringBuilder();
         foreach (var slave in store.GetSlaves())
         {
-            var inboxPill = slave.Inbox.State == "clean"
-                ? "<span class=\"pill clean\">inbox clean</span>"
-                : $"<span class=\"pill pending\">inbox {Esc(slave.Inbox.State)}</span>";
             var flight = slave.SyncInFlight ? "<span class=\"pill flight\">sync in flight</span>" : "";
             sb.Append($"""
 <section class="card">
-  <h3>{Esc(slave.Name)}{inboxPill}{flight}</h3>
+  <h3>{Esc(slave.Name)}{InboxPill(slave.SlaveInbox)}{flight}</h3>
   <table>
     <tr><th>path</th><td>{Esc(slave.Path)}</td></tr>
     <tr><th>sync branch</th><td>{Esc(slave.SyncBranch)}</td></tr>
     <tr><th>base branch</th><td>{Esc(slave.BaseBranch)}</td></tr>
     <tr><th>ledger</th><td>{Esc(slave.LedgerHint)}</td></tr>
-    <tr><th>inbox</th><td>{Esc(slave.Inbox.Branch ?? "—")} · {slave.Inbox.DirtyFileCount} dirty · {Esc(slave.Inbox.LastSyncOp ?? "—")}</td></tr>
+    <tr><th>inbox (slave)</th><td>{InboxCell(slave.SlaveInbox)}</td></tr>
+    <tr><th>inbox (master)</th><td>{InboxCell(slave.MasterInbox)}</td></tr>
+    <tr><th>last op</th><td>{Esc(slave.LastOperation)}</td></tr>
   </table>
   <p class="links"><a href="/slave/{Url(slave.Name)}/history">history</a><a href="/slave/{Url(slave.Name)}/inbox">inbox</a><a href="/slave/{Url(slave.Name)}/conflicts">conflicts</a></p>
 </section>
@@ -77,15 +76,11 @@ internal static class UiPages
 
     public static string Inbox(SlaveView slave)
     {
-        var pill = slave.Inbox.State == "clean"
-            ? "<span class=\"pill clean\">clean</span>"
-            : "<span class=\"pill pending\">pending</span>";
         var body = $"""
 <table>
-  <tr><th>state</th><td>{pill}</td></tr>
-  <tr><th>branch</th><td>{Esc(slave.Inbox.Branch ?? "—")}</td></tr>
-  <tr><th>dirty files</th><td>{slave.Inbox.DirtyFileCount}</td></tr>
-  <tr><th>last sync op</th><td>{Esc(slave.Inbox.LastSyncOp ?? "—")}</td></tr>
+  <tr><th>slave inbox</th><td>{InboxCell(slave.SlaveInbox)}</td></tr>
+  <tr><th>master inbox</th><td>{InboxCell(slave.MasterInbox)}</td></tr>
+  <tr><th>last sync op</th><td>{Esc(slave.LastOperation)}</td></tr>
 </table>
 """;
         return Layout($"synchro — {slave.Name} inbox", $"<h2>Pending inbox · {Esc(slave.Name)}</h2>{body}");
@@ -142,6 +137,17 @@ internal static class UiPages
 </body>
 </html>
 """;
+
+    private static string InboxPill(InboxView inbox) => inbox.State switch
+    {
+        "pending" => "<span class=\"pill pending\">inbox pending</span>",
+        "missing" => "<span class=\"err\">repo missing</span>",
+        _ => "<span class=\"pill clean\">inbox clean</span>",
+    };
+
+    private static string InboxCell(InboxView inbox) => inbox.State == "missing"
+        ? "<span class=\"err\">repo missing — check the path</span>"
+        : $"{Esc(inbox.Branch ?? "—")} · {inbox.DirtyFileCount} uncommitted · {InboxPill(inbox)}";
 
     private static string Esc(string value) => WebUtility.HtmlEncode(value);
 

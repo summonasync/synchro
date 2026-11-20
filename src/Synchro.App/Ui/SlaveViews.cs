@@ -6,8 +6,10 @@ internal sealed record SlaveView(
     string SyncBranch,
     string BaseBranch,
     string LedgerHint,
-    InboxView Inbox,
-    bool SyncInFlight);
+    InboxView SlaveInbox,
+    InboxView MasterInbox,
+    bool SyncInFlight,
+    string LastOperation);
 
 internal sealed record InboxView(
     string State,

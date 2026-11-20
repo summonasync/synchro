@@ -57,13 +57,13 @@ internal static class UiHost
         return 0;
     }
 
-    internal static WebApplication BuildHost(string root, int port, bool openBrowser)
+    internal static WebApplication BuildHost(string root, int port, bool openBrowser, IUiStore? store = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
-        var store = new FixtureUiStore();
+        store ??= new StoreUiStore(root);
         var tools = new SynchroMcpTools(root);
         var app = builder.Build();
 

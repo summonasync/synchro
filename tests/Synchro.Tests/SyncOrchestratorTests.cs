@@ -217,6 +217,98 @@ public class SyncOrchestratorTests
     }
 
     [Fact]
+    public void Sync_CommittedInboxThenMasterBaseEdit_ConflictFiresAndMasterContentLands()
+    {
+        var (master, slave, _, state) = TestSyncPair.Create();
+        try
+        {
+            TestGitRepo.Commit(slave, "s.txt", "slave content\n", "slave adds s");
+
+            var first = TestSyncPair.Sync(master, state);
+            first.Report.ToMaster!.WrittenFiles.ShouldBe(["s.txt"]);
+
+            TestGitRepo.Commit(master, "s.txt", "slave content\n", "accept slave inbox");
+            GitCli.Run(master, "checkout", "main");
+            TestGitRepo.Commit(master, "s.txt", "master edit\n", "master edits on base");
+
+            var output = TestSyncPair.Sync(master, first.State);
+
+            var conflict = output.Report.Conflicts.Single();
+            conflict.Path.ShouldBe("s.txt");
+            conflict.Winner.ShouldBe(ConflictWinner.Master);
+            output.Report.AlreadyCommitted.ShouldBeEmpty();
+            output.Report.ToSlave.ShouldNotBeNull();
+            output.Report.ToSlave!.WrittenFiles.ShouldBe(["s.txt"]);
+            output.Report.ToMaster.ShouldBeNull();
+            File.ReadAllText(Path.Combine(slave, "s.txt")).ShouldBe("master edit\n");
+            GitCli.Run(master, "branch", "--show-current").Output.Trim().ShouldBe("main");
+            GitCli.StatusPorcelain(master).ShouldBe("");
+        }
+        finally
+        {
+            TestSyncPair.Cleanup(master);
+        }
+    }
+
+    [Fact]
+    public void Sync_MasterInboxDiscarded_SlaveContentReOffered()
+    {
+        var (master, slave, _, state) = TestSyncPair.Create();
+        try
+        {
+            TestGitRepo.Commit(slave, "feature-s.txt", "from slave\n", "slave adds feature");
+
+            var first = TestSyncPair.Sync(master, state);
+            first.Report.ToMaster!.WrittenFiles.ShouldBe(["feature-s.txt"]);
+
+            GitCli.Run(master, "checkout", "main");
+            File.Delete(Path.Combine(master, "feature-s.txt"));
+            GitCli.StatusPorcelain(master).ShouldBe("");
+
+            var second = TestSyncPair.Sync(master, first.State);
+
+            second.Report.AlreadyCommitted.ShouldBeEmpty();
+            second.Report.Conflicts.ShouldBeEmpty();
+            second.Report.ToMaster.ShouldNotBeNull();
+            second.Report.ToMaster!.WrittenFiles.ShouldBe(["feature-s.txt"]);
+            File.ReadAllText(Path.Combine(master, "feature-s.txt")).ShouldBe("from slave\n");
+        }
+        finally
+        {
+            TestSyncPair.Cleanup(master);
+        }
+    }
+
+    [Fact]
+    public void Sync_SlaveEvolvesAfterInboxAccepted_NewContentReOffered()
+    {
+        var (master, slave, _, state) = TestSyncPair.Create();
+        try
+        {
+            TestGitRepo.Commit(slave, "s.txt", "v1\n", "slave adds s");
+
+            var first = TestSyncPair.Sync(master, state);
+            first.Report.ToMaster!.WrittenFiles.ShouldBe(["s.txt"]);
+
+            TestGitRepo.Commit(master, "s.txt", "v1\n", "accept slave inbox");
+            GitCli.Run(master, "checkout", "main");
+            TestGitRepo.Commit(slave, "s.txt", "v2\n", "slave evolves s");
+
+            var second = TestSyncPair.Sync(master, first.State);
+
+            second.Report.AlreadyCommitted.ShouldBeEmpty();
+            second.Report.Conflicts.ShouldBeEmpty();
+            second.Report.ToMaster.ShouldNotBeNull();
+            second.Report.ToMaster!.WrittenFiles.ShouldBe(["s.txt"]);
+            File.ReadAllText(Path.Combine(master, "s.txt")).ShouldBe("v2\n");
+        }
+        finally
+        {
+            TestSyncPair.Cleanup(master);
+        }
+    }
+
+    [Fact]
     public void Sync_MissingSlaveFolder_RefusesWithClearError()
     {
         var (master, slave, _, state) = TestSyncPair.Create();

@@ -16,7 +16,7 @@ public static class SyncInboxProbe
         var committed = new HashSet<string>(StringComparer.Ordinal);
         foreach (var delta in deltas)
         {
-            if (delta.Kind == FileDeltaKind.MasterToSlave)
+            if (delta.Kind != FileDeltaKind.SlaveToMaster)
             {
                 continue;
             }

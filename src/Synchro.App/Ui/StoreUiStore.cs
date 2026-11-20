@@ -69,10 +69,6 @@ internal sealed class StoreUiStore : IUiStore
         return conflicts.Count == 0 ? null : new SlaveConflictView(slaveName, conflicts);
     }
 
-    public void Resolve(string slaveName, string path, string op)
-    {
-    }
-
     private StoreState? LoadState() =>
         MasterStore.Load(_root) is Result<(StoreState State, byte[] Key)>.Ok loaded ? loaded.Value.State : null;
 

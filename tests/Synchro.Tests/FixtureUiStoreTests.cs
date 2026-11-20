@@ -44,30 +44,4 @@ public class FixtureUiStoreTests
 
         _store.GetConflicts("nope").ShouldBeNull();
     }
-
-    [Fact]
-    public void Resolve_AppliesEachSupportedOp()
-    {
-        _store.Resolve("feature-ui", "src/Program.cs", "drop");
-        _store.Resolve("feature-ui", "docs/flow.md", "replace");
-        _store.Resolve("feature-ui", "skill/SYNCHRO.md", "merge");
-
-        var scene = _store.GetConflicts("feature-ui")!;
-
-        scene.Paths.Single(p => p.Path == "src/Program.cs").Resolution.ShouldBe("drop");
-        scene.Paths.Single(p => p.Path == "docs/flow.md").Resolution.ShouldBe("replace");
-        scene.Paths.Single(p => p.Path == "skill/SYNCHRO.md").Resolution.ShouldBe("merge");
-    }
-
-    [Fact]
-    public void Resolve_IgnoresUnknownSlavesUnknownPathsAndUnknownOps()
-    {
-        _store.Resolve("nope", "src/Program.cs", "drop");
-        _store.Resolve("feature-ui", "no/such/file.cs", "merge");
-        _store.Resolve("feature-ui", "src/Program.cs", "nuke");
-
-        var scene = _store.GetConflicts("feature-ui")!;
-
-        scene.Paths.ShouldAllBe(p => p.Resolution == "unresolved");
-    }
 }

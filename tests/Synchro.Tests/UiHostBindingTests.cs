@@ -54,31 +54,6 @@ public class UiHostBindingTests
     }
 
     [Fact]
-    public async Task Host_ConflictResolve_PostsDriveDropReplaceAndMerge()
-    {
-        var (app, port) = await StartHostAsync();
-        try
-        {
-            using var client = new HttpClient();
-            var baseUrl = $"http://127.0.0.1:{port}";
-
-            await PostResolveAsync(client, baseUrl, "src/Program.cs", "drop");
-            await PostResolveAsync(client, baseUrl, "docs/flow.md", "replace");
-            await PostResolveAsync(client, baseUrl, "skill/SYNCHRO.md", "merge");
-
-            var page = await client.GetStringAsync($"{baseUrl}/slave/feature-ui/conflicts");
-            page.ShouldContain(">drop</span>");
-            page.ShouldContain(">replace</span>");
-            page.ShouldContain(">merge</span>");
-        }
-        finally
-        {
-            await app.StopAsync();
-            await app.DisposeAsync();
-        }
-    }
-
-    [Fact]
     public void Runner_TryAnswerWithoutPendingReturnsFalse()
     {
         var runner = new UiSyncRunner(Path.GetTempPath());
@@ -207,17 +182,6 @@ public class UiHostBindingTests
         catch (IOException)
         {
         }
-    }
-
-    private static async Task PostResolveAsync(HttpClient client, string baseUrl, string path, string op)
-    {
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["path"] = path, ["op"] = op });
-        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-        using var noRedirect = new HttpClient(handler);
-        using var response = await noRedirect.PostAsync($"{baseUrl}/slave/feature-ui/conflicts/resolve", content);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.Found);
-        response.Headers.Location?.ToString().ShouldBe("/slave/feature-ui/conflicts");
     }
 
     private static async Task<(Microsoft.AspNetCore.Builder.WebApplication App, int Port)> StartHostAsync()

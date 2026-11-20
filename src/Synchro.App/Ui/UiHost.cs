@@ -133,18 +133,6 @@ internal static class UiHost
             return Results.Redirect($"/slave/{Uri.EscapeDataString(name)}/conflicts");
         });
 
-        app.MapPost("/slave/{name}/conflicts/resolve", async (string name, HttpRequest request, CancellationToken aborted) =>
-        {
-            var form = await request.ReadFormAsync(aborted);
-            var path = form["path"].ToString();
-            if (path.Length > 0)
-            {
-                store.Resolve(name, path, form["op"].ToString());
-            }
-
-            return Results.Redirect($"/slave/{Uri.EscapeDataString(name)}/conflicts");
-        });
-
         app.MapGet("/api/status", () => Json(tools.Status()));
         app.MapGet("/api/log", () => Json(tools.Log()));
         app.MapGet("/api/scene", () => Json(tools.SceneStatus()));

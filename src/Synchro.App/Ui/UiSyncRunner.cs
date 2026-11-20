@@ -120,7 +120,7 @@ internal sealed class UiSyncRunner
                 AddLog("sync finished — commit the inbox branches or roll back");
             }
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex)
         {
             Fail(ex.Message);
         }

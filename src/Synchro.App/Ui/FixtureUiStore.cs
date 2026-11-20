@@ -73,25 +73,4 @@ internal sealed class FixtureUiStore : IUiStore
         _conflicts.TryGetValue(slaveName, out var paths)
             ? new SlaveConflictView(slaveName, paths)
             : null;
-
-    public void Resolve(string slaveName, string path, string op)
-    {
-        if (op is not ("drop" or "replace" or "merge"))
-        {
-            return;
-        }
-
-        if (!_conflicts.TryGetValue(slaveName, out var paths))
-        {
-            return;
-        }
-
-        var index = paths.FindIndex(p => p.Path == path);
-        if (index < 0)
-        {
-            return;
-        }
-
-        paths[index] = paths[index] with { Resolution = op };
-    }
 }

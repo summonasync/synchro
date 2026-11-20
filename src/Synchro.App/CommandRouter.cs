@@ -6,7 +6,7 @@ namespace Synchro.App;
 
 internal static class CommandRouter
 {
-    private static readonly string[] KnownCommands = ["init", "pack", "apply", "scene", "rollback", "status", "log", "serve"];
+    private static readonly string[] KnownCommands = ["add", "init", "pack", "apply", "scene", "rollback", "status", "log", "serve"];
 
     public static int Run(string[] args)
     {
@@ -30,6 +30,7 @@ internal static class CommandRouter
 
         return command switch
         {
+            "add" => AddCommand.Run(args[1..]),
             "init" => InitCommand.Run(args[1..]),
             "pack" => PackCommand.Run(args[1..]),
             "apply" => ApplyCommand.Run(args[1..]),
@@ -47,6 +48,7 @@ internal static class CommandRouter
     {
         Console.WriteLine("usage: synchro <command> [options]");
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
+        Console.WriteLine("add slave <path>      register a slave repo for direct sync");
         Console.WriteLine("init [options]        set up the local store (--key <hex> to adopt a peer key)");
         Console.WriteLine("pack [--full] [--out] build a package manifest draft from committed state");
         Console.WriteLine("apply <package>       apply a sealed package (stages conflicts into a scene)");

@@ -35,7 +35,9 @@ public class UiHostBindingTests
         {
             using var client = new HttpClient();
 
-            var home = await client.GetStringAsync($"http://127.0.0.1:{port}/");
+            using var homeResponse = await client.GetAsync($"http://127.0.0.1:{port}/");
+            homeResponse.Headers.Contains("Content-Security-Policy").ShouldBeTrue();
+            var home = await homeResponse.Content.ReadAsStringAsync();
             home.ShouldContain("<h1>SYNCHRO</h1>");
             home.ShouldContain("feature-ui");
 
@@ -58,9 +60,9 @@ public class UiHostBindingTests
             using var client = new HttpClient();
             var baseUrl = $"http://127.0.0.1:{port}";
 
-            PostResolve(client, baseUrl, "src/Program.cs", "drop");
-            PostResolve(client, baseUrl, "docs/flow.md", "replace");
-            PostResolve(client, baseUrl, "skill/SYNCHRO.md", "merge");
+            await PostResolveAsync(client, baseUrl, "src/Program.cs", "drop");
+            await PostResolveAsync(client, baseUrl, "docs/flow.md", "replace");
+            await PostResolveAsync(client, baseUrl, "skill/SYNCHRO.md", "merge");
 
             var page = await client.GetStringAsync($"{baseUrl}/slave/feature-ui/conflicts");
             page.ShouldContain(">drop</span>");
@@ -74,12 +76,12 @@ public class UiHostBindingTests
         }
     }
 
-    private static void PostResolve(HttpClient client, string baseUrl, string path, string op)
+    private static async Task PostResolveAsync(HttpClient client, string baseUrl, string path, string op)
     {
         using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["path"] = path, ["op"] = op });
         using var handler = new HttpClientHandler { AllowAutoRedirect = false };
         using var noRedirect = new HttpClient(handler);
-        using var response = noRedirect.PostAsync($"{baseUrl}/slave/feature-ui/conflicts/resolve", content).GetAwaiter().GetResult();
+        using var response = await noRedirect.PostAsync($"{baseUrl}/slave/feature-ui/conflicts/resolve", content);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Found);
         response.Headers.Location?.ToString().ShouldBe("/slave/feature-ui/conflicts");
@@ -87,7 +89,7 @@ public class UiHostBindingTests
 
     private static async Task<(Microsoft.AspNetCore.Builder.WebApplication App, int Port)> StartHostAsync()
     {
-        var app = UiHost.BuildHost(Directory.GetCurrentDirectory(), 0);
+        var app = UiHost.BuildHost(Directory.GetCurrentDirectory(), 0, openBrowser: false);
         await app.StartAsync();
 
         var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses ?? [];

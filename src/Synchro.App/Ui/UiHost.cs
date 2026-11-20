@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -53,12 +52,12 @@ internal static class UiHost
 
         root = Path.GetFullPath(root);
 
-        var app = BuildHost(root, portArg ?? 0);
+        var app = BuildHost(root, portArg ?? 0, openBrowser: true);
         app.Run();
         return 0;
     }
 
-    internal static WebApplication BuildHost(string root, int port)
+    internal static WebApplication BuildHost(string root, int port, bool openBrowser)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
@@ -99,9 +98,9 @@ internal static class UiHost
             return scene is null ? UnknownSlave(name) : Html(UiPages.Conflicts(scene));
         });
 
-        app.MapPost("/slave/{name}/conflicts/resolve", async (string name, HttpRequest request) =>
+        app.MapPost("/slave/{name}/conflicts/resolve", async (string name, HttpRequest request, CancellationToken aborted) =>
         {
-            var form = await request.ReadFormAsync();
+            var form = await request.ReadFormAsync(aborted);
             var path = form["path"].ToString();
             if (path.Length > 0)
             {
@@ -116,7 +115,7 @@ internal static class UiHost
         app.MapGet("/api/scene", () => Json(tools.SceneStatus()));
         app.MapGet("/api/scene/read", (string path) => Json(tools.SceneRead(path)));
 
-        app.Lifetime.ApplicationStarted.Register(() => Announce(app, root));
+        app.Lifetime.ApplicationStarted.Register(() => Announce(app, root, openBrowser));
 
         return app;
     }
@@ -128,12 +127,15 @@ internal static class UiHost
     private static IResult UnknownSlave(string name) =>
         Results.Text($"unknown slave '{name}'", "text/plain; charset=utf-8", statusCode: 404);
 
-    private static void Announce(WebApplication app, string root)
+    private static void Announce(WebApplication app, string root, bool openBrowser)
     {
         var port = BoundPort(app);
         var display = $"http://{DisplayHost(port)}";
         Console.WriteLine($"synchro ui: serving {root} at {display} (Ctrl+C to stop)");
-        TryOpenBrowser(display);
+        if (openBrowser)
+        {
+            TryOpenBrowser(display);
+        }
     }
 
     private static int BoundPort(WebApplication app)
@@ -161,7 +163,7 @@ internal static class UiHost
                 return $"{FriendlyHost}:{port}";
             }
         }
-        catch (Exception ex) when (ex is SocketException or OperationCanceledException)
+        catch (Exception)
         {
         }
 

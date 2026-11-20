@@ -169,6 +169,48 @@ public class StoreContainerTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public void Load_TamperedContainerByte_FailsCleanly()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            var path = Path.Combine(dir, "container");
+            var state = SampleState() with
+            {
+                SyncHistory = new Dictionary<string, IReadOnlyList<SyncHistoryRecord>>
+                {
+                    ["khadgar"] =
+                    [
+                        new SyncHistoryRecord
+                        {
+                            AtUtc = DateTimeOffset.Parse("2026-11-20T10:00:00Z"),
+                            Direction = SyncDirection.MasterToSlave,
+                            FilesChanged = 2,
+                            Conflicts = [],
+                            RolledBack = false
+                        }
+                    ]
+                }
+            };
+            StoreContainer.Save(path, Key, state);
+
+            var bytes = File.ReadAllBytes(path);
+            bytes[bytes.Length / 2] ^= 0xFF;
+            File.WriteAllBytes(path, bytes);
+
+            var loaded = StoreContainer.Load(path, Key);
+
+            var fail = loaded.ShouldBeOfType<Result<StoreState>.Fail>();
+            fail.Error.Code.ShouldBe("invalid");
+            fail.Error.Message.ShouldContain("corrupted");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
 }
 
 public static class TempDir

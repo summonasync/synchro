@@ -90,7 +90,7 @@ public static class SyncEngine
 
         var (masterLeft, slaveLeft) = MatchByPatchId(masterOk.Value, slaveOk.Value);
         var offers = masterLeft
-            .Select(m => new CommitDisposition { Commit = m, Disposition = TruthReader.Classify(m, syncOk.Value) })
+            .Select(m => new CommitDisposition { Commit = m, Disposition = TruthReader.Classify(m, syncOk.Value, request.MasterRoot) })
             .ToList();
         var reoffers = offers
             .Where(o => o.Disposition == OfferDisposition.Reoffer)

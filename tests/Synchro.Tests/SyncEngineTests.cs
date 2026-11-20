@@ -261,6 +261,113 @@ public class SyncEngineTests
     }
 
     [Fact]
+    public void Reconcile_SecondOfferOnSamePath_ReofferedAfterFirstApplied()
+    {
+        var (master, slave, _) = CreatePair();
+        try
+        {
+            var firstSha = TestGitRepo.Commit(master, "f.txt", "v2\n", "first offer");
+            var secondSha = TestGitRepo.Commit(master, "f.txt", "v3\n", "second offer");
+            CommitOnSyncBranch(slave, "f.txt", "v2\n", "first offer applied verbatim");
+
+            var plan = Reconcile(Request(master, slave));
+
+            plan.MasterOffers.ShouldContain(o => o.Commit.Sha == firstSha && o.Disposition == OfferDisposition.AppliedCommitted);
+            plan.MasterOffers.ShouldContain(o => o.Commit.Sha == secondSha && o.Disposition == OfferDisposition.Reoffer);
+            plan.Hint.ConsumedShas.ShouldBe([firstSha]);
+            plan.Hint.PendingShas.ShouldBe([secondSha]);
+            plan.FileMap.Single(d => d.Path == "f.txt").Kind.ShouldBe(FileDeltaKind.MasterToSlave);
+            plan.NoOp.ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(Directory.GetParent(master)!.FullName, true);
+        }
+    }
+
+    [Fact]
+    public void Reconcile_SlaveEvolutionOfAcceptedFile_DoesNotStrandNextMasterOffer()
+    {
+        var (master, slave, _) = CreatePair();
+        try
+        {
+            var offerSha = TestGitRepo.Commit(master, "f.txt", "v2\n", "master offer");
+            TestGitRepo.Commit(master, "f.txt", "v4-master\n", "master moves on");
+            GitCli.Run(slave, "checkout", "-B", "feature-sync");
+            TestGitRepo.Commit(slave, "f.txt", "v2\n", "inbox applied verbatim");
+            TestGitRepo.Commit(slave, "f.txt", "v3-slave\n", "slave evolves the accepted file");
+            GitCli.Run(slave, "checkout", "main");
+
+            var plan = Reconcile(Request(master, slave));
+
+            plan.MasterOffers.ShouldContain(o => o.Commit.Sha == offerSha && o.Disposition == OfferDisposition.AppliedCommitted);
+            var next = plan.MasterOffers.Single(o => o.Commit.Sha != offerSha);
+            next.Disposition.ShouldBe(OfferDisposition.Reoffer);
+            plan.FileMap.ShouldContain(d => d.Path == "f.txt" && d.Kind == FileDeltaKind.MasterToSlave);
+            plan.Hint.PendingShas.ShouldBe([next.Commit.Sha]);
+        }
+        finally
+        {
+            Directory.Delete(Directory.GetParent(master)!.FullName, true);
+        }
+    }
+
+    [Fact]
+    public void Reconcile_CombinedInboxApplyThenEvolution_BothOffersConsumedAsModified()
+    {
+        var (master, slave, _) = CreatePair();
+        try
+        {
+            var firstSha = TestGitRepo.Commit(master, "f.txt", "v2\n", "first offer");
+            var secondSha = TestGitRepo.Commit(master, "f.txt", "v3\n", "second offer");
+            GitCli.Run(slave, "checkout", "-B", "feature-sync");
+            TestGitRepo.Commit(slave, "f.txt", "v3\n", "inbox applied in one commit");
+            TestGitRepo.Commit(slave, "f.txt", "v3-slave\n", "slave evolves the file");
+            GitCli.Run(slave, "checkout", "main");
+
+            var plan = Reconcile(Request(master, slave));
+
+            plan.MasterOffers.ShouldAllBe(o => o.Disposition == OfferDisposition.AppliedModified);
+            plan.Hint.ConsumedShas.Count.ShouldBe(2);
+            plan.Hint.ConsumedShas.ShouldContain(firstSha);
+            plan.Hint.ConsumedShas.ShouldContain(secondSha);
+            plan.FileMap.ShouldBeEmpty();
+            plan.NoOp.ShouldBeTrue();
+        }
+        finally
+        {
+            Directory.Delete(Directory.GetParent(master)!.FullName, true);
+        }
+    }
+
+    [Fact]
+    public void Reconcile_PartialInboxApply_UnappliedFileStaysReoffered()
+    {
+        var (master, slave, _) = CreatePair();
+        try
+        {
+            TestGitRepo.Stage(master, "f.txt", "v2\n");
+            TestGitRepo.Stage(master, "g.txt", "w2\n");
+            GitCli.Run(master, "commit", "-m", "combined offer");
+            var combinedSha = GitCli.Run(master, "rev-parse", "HEAD").Output.Trim();
+            CommitOnSyncBranch(slave, "f.txt", "v2\n", "inbox applied only f.txt");
+
+            var plan = Reconcile(Request(master, slave));
+
+            plan.MasterOffers.Single().Commit.Sha.ShouldBe(combinedSha);
+            plan.MasterOffers.Single().Disposition.ShouldBe(OfferDisposition.Reoffer);
+            plan.FileMap.Select(d => d.Path).ShouldBe(["f.txt", "g.txt"]);
+            plan.FileMap.ShouldAllBe(d => d.Kind == FileDeltaKind.MasterToSlave);
+            plan.Hint.PendingShas.ShouldBe([combinedSha]);
+            plan.NoOp.ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(Directory.GetParent(master)!.FullName, true);
+        }
+    }
+
+    [Fact]
     public void Reconcile_MissingSlaveBranch_FailsWithClearError()
     {
         var (master, slave, _) = CreatePair();

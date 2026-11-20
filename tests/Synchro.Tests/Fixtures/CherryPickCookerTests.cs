@@ -15,8 +15,8 @@ public class CherryPickCookerTests
             cooked.SlavePickSha.ShouldNotBe(cooked.SlaveLocalSha);
             cooked.SharedSeedSha.ShouldNotBe(cooked.MasterCommitSha);
 
-            var masterPatchId = StablePatchId(cooked.Master.Root, cooked.MasterCommitSha);
-            var slavePatchId = StablePatchId(cooked.Slave.Root, cooked.SlavePickSha);
+            var masterPatchId = FixtureGit.StablePatchId(cooked.Master.Root, cooked.MasterCommitSha);
+            var slavePatchId = FixtureGit.StablePatchId(cooked.Slave.Root, cooked.SlavePickSha);
             masterPatchId.ShouldNotBeEmpty();
             masterPatchId.ShouldBe(slavePatchId);
 
@@ -25,16 +25,13 @@ public class CherryPickCookerTests
         }
         finally
         {
+            cooked.Origin.Delete();
             cooked.Master.Delete();
             cooked.Slave.Delete();
         }
-    }
 
-    private static string StablePatchId(string repoRoot, string sha)
-    {
-        var patch = FixtureGit.Output(repoRoot, "show", sha);
-        var result = FixtureGit.RunWithInput(repoRoot, patch, "patch-id", "--stable");
-        result.Succeeded.ShouldBeTrue(result.StandardError);
-        return result.StandardOutput.Trim().Split(' ')[0];
+        Directory.Exists(cooked.Origin.Root).ShouldBeFalse();
+        Directory.Exists(cooked.Master.Root).ShouldBeFalse();
+        Directory.Exists(cooked.Slave.Root).ShouldBeFalse();
     }
 }

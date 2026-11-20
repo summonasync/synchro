@@ -8,6 +8,7 @@ public static class CherryPickCooker
     private static readonly DateTimeOffset PickCommitterDate = new(2026, 2, 4, 9, 0, 0, TimeSpan.Zero);
 
     public sealed record Cooked(
+        TempRepoBuilder Origin,
         TempRepoBuilder Master,
         TempRepoBuilder Slave,
         string SharedSeedSha,
@@ -34,6 +35,6 @@ public static class CherryPickCooker
         FixtureGit.Output(slave.Root, "update-ref", "-d", pickRef);
         var slavePickSha = slave.HeadSha;
 
-        return new Cooked(master, slave, seedSha, masterCommitSha, slaveLocalSha, slavePickSha);
+        return new Cooked(origin, master, slave, seedSha, masterCommitSha, slaveLocalSha, slavePickSha);
     }
 }

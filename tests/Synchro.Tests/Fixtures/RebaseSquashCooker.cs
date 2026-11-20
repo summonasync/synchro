@@ -9,6 +9,7 @@ public static class RebaseSquashCooker
     private static readonly DateTimeOffset SlaveSquashDate = new(2026, 3, 5, 9, 0, 0, TimeSpan.Zero);
 
     public sealed record Cooked(
+        TempRepoBuilder Origin,
         TempRepoBuilder Master,
         TempRepoBuilder Slave,
         string SharedSeedSha,
@@ -39,6 +40,7 @@ public static class RebaseSquashCooker
         var squashTreeSha = TreeSha(slave.Root, "HEAD");
 
         return new Cooked(
+            origin,
             master,
             slave,
             seedSha,

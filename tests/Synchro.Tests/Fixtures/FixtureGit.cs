@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Shouldly;
 
 namespace Synchro.Tests.Fixtures;
 
@@ -31,6 +32,14 @@ public static class FixtureGit
             throw new InvalidOperationException(
                 $"git {string.Join(" ", arguments)} failed in {workingDirectory}: {result.StandardError.Trim()}");
         return result.StandardOutput.Trim();
+    }
+
+    public static string StablePatchId(string repoRoot, string sha)
+    {
+        var patch = Output(repoRoot, "show", sha);
+        var result = RunWithInput(repoRoot, patch, "patch-id", "--stable");
+        result.Succeeded.ShouldBeTrue(result.StandardError);
+        return result.StandardOutput.Trim().Split(' ')[0];
     }
 
     public static IReadOnlyDictionary<string, string> DateEnv(DateTimeOffset date)

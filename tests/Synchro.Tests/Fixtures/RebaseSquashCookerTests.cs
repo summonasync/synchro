@@ -15,9 +15,9 @@ public class RebaseSquashCookerTests
             cooked.SlaveSquashSha.ShouldNotBe(cooked.SlaveLocalShas[1]);
             cooked.SquashTreeSha.ShouldBe(cooked.PreSquashTreeSha);
 
-            var squashPatchId = StablePatchId(cooked.Slave.Root, cooked.SlaveSquashSha);
-            squashPatchId.ShouldNotBe(StablePatchId(cooked.Slave.Root, cooked.SlaveLocalShas[0]));
-            squashPatchId.ShouldNotBe(StablePatchId(cooked.Slave.Root, cooked.SlaveLocalShas[1]));
+            var squashPatchId = FixtureGit.StablePatchId(cooked.Slave.Root, cooked.SlaveSquashSha);
+            squashPatchId.ShouldNotBe(FixtureGit.StablePatchId(cooked.Slave.Root, cooked.SlaveLocalShas[0]));
+            squashPatchId.ShouldNotBe(FixtureGit.StablePatchId(cooked.Slave.Root, cooked.SlaveLocalShas[1]));
 
             FixtureGit.Run(cooked.Slave.Root, "merge-base", "--is-ancestor", cooked.SharedSeedSha, cooked.SlaveSquashSha)
                 .Succeeded.ShouldBeTrue();
@@ -28,16 +28,13 @@ public class RebaseSquashCookerTests
         }
         finally
         {
+            cooked.Origin.Delete();
             cooked.Master.Delete();
             cooked.Slave.Delete();
         }
-    }
 
-    private static string StablePatchId(string repoRoot, string sha)
-    {
-        var patch = FixtureGit.Output(repoRoot, "show", sha);
-        var result = FixtureGit.RunWithInput(repoRoot, patch, "patch-id", "--stable");
-        result.Succeeded.ShouldBeTrue(result.StandardError);
-        return result.StandardOutput.Trim().Split(' ')[0];
+        Directory.Exists(cooked.Origin.Root).ShouldBeFalse();
+        Directory.Exists(cooked.Master.Root).ShouldBeFalse();
+        Directory.Exists(cooked.Slave.Root).ShouldBeFalse();
     }
 }

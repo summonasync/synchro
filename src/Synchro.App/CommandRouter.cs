@@ -13,7 +13,7 @@ internal static class CommandRouter
     {
         if (args.Length == 0)
         {
-            return WriteUsage();
+            return WriteUsage(2);
         }
 
         var command = args[0];
@@ -46,7 +46,7 @@ internal static class CommandRouter
         };
     }
 
-    private static int WriteUsage()
+    private static int WriteUsage(int exitCode = 0)
     {
         Console.WriteLine("usage: synchro <command> [options]");
         Console.WriteLine($"commands: {string.Join(", ", KnownCommands)}");
@@ -61,7 +61,7 @@ internal static class CommandRouter
         Console.WriteLine("log [<slave>]         sync history, newest first");
         Console.WriteLine("help                  show this help");
         Console.WriteLine("run 'synchro <command> --help' for command details");
-        return 0;
+        return exitCode;
     }
 
     private static int WriteUnknown(string command)

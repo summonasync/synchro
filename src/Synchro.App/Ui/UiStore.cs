@@ -7,6 +7,4 @@ internal interface IUiStore
     IReadOnlyList<HistoryEntryView> GetHistory(string slaveName);
 
     SlaveConflictView? GetConflicts(string slaveName);
-
-    void Resolve(string slaveName, string path, string op);
 }

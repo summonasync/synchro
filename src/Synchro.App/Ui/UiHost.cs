@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Synchro.App.Mcp;
+using Synchro.Core.Store;
 
 namespace Synchro.App.Ui;
 
@@ -57,13 +58,14 @@ internal static class UiHost
         return 0;
     }
 
-    internal static WebApplication BuildHost(string root, int port, bool openBrowser)
+    internal static WebApplication BuildHost(string root, int port, bool openBrowser, IUiStore? store = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
-        var store = new FixtureUiStore();
+        store ??= new StoreUiStore(root);
+        var sync = new UiSyncRunner(root);
         var tools = new SynchroMcpTools(root);
         var app = builder.Build();
 
@@ -94,19 +96,40 @@ internal static class UiHost
 
         app.MapGet("/slave/{name}/conflicts", (string name) =>
         {
-            var scene = store.GetConflicts(name);
-            return scene is null ? UnknownSlave(name) : Html(UiPages.Conflicts(scene));
-        });
-
-        app.MapPost("/slave/{name}/conflicts/resolve", async (string name, HttpRequest request, CancellationToken aborted) =>
-        {
-            var form = await request.ReadFormAsync(aborted);
-            var path = form["path"].ToString();
-            if (path.Length > 0)
+            if (!store.GetSlaves().Any(s => s.Name == name))
             {
-                store.Resolve(name, path, form["op"].ToString());
+                return UnknownSlave(name);
             }
 
+            return Html(UiPages.Conflicts(name, store.GetConflicts(name), sync));
+        });
+
+        app.MapGet("/slave/{name}/sync", (string name) =>
+        {
+            if (!store.GetSlaves().Any(s => s.Name == name))
+            {
+                return UnknownSlave(name);
+            }
+
+            return Html(UiPages.SyncLive(name, sync));
+        });
+
+        app.MapPost("/slave/{name}/sync", (string name) =>
+        {
+            if (!store.GetSlaves().Any(s => s.Name == name))
+            {
+                return UnknownSlave(name);
+            }
+
+            sync.Start(name);
+            return Results.Redirect($"/slave/{Uri.EscapeDataString(name)}/sync");
+        });
+
+        app.MapPost("/slave/{name}/conflicts/answer", async (string name, HttpRequest request, CancellationToken aborted) =>
+        {
+            var form = await request.ReadFormAsync(aborted);
+            var winner = form["winner"].ToString() == "slave" ? ConflictWinner.Slave : ConflictWinner.Master;
+            sync.TryAnswer(form["path"].ToString(), winner);
             return Results.Redirect($"/slave/{Uri.EscapeDataString(name)}/conflicts");
         });
 

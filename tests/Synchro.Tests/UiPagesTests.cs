@@ -45,42 +45,35 @@ public class UiPagesTests
     }
 
     [Fact]
-    public void Inbox_RendersBranchDirtyCountAndLastOp()
+    public void Inbox_RendersBothInboxesAndLastOp()
     {
         var slave = _store.GetSlaves().Single(s => s.Name == "feature-ui");
 
         var page = UiPages.Inbox(slave);
 
         page.ShouldContain("Pending inbox · feature-ui");
-        page.ShouldContain("<th>dirty files</th>");
-        page.ShouldContain("pull at 08:04 utc");
+        page.ShouldContain("<th>slave inbox</th>");
+        page.ShouldContain("<th>master inbox</th>");
+        page.ShouldContain("2026-11-20 08:04:00Z master → slave");
     }
 
     [Fact]
-    public void Conflicts_RendersThreeWayContentAndResolveForm()
+    public void Conflicts_HistoryRendersResolutionPills_WithoutAnswerForms()
     {
         var scene = _store.GetConflicts("feature-ui")!;
 
-        var page = UiPages.Conflicts(scene);
+        var page = UiPages.Conflicts("feature-ui", scene, new UiSyncRunner("/nonexistent"));
 
-        page.ShouldContain("<h4>theirs</h4>");
-        page.ShouldContain("<h4>local</h4>");
-        page.ShouldContain("<h4>base</h4>");
-        page.ShouldContain("/slave/feature-ui/conflicts/resolve");
-        page.ShouldContain(">drop</button>");
-        page.ShouldContain(">replace</button>");
-        page.ShouldContain(">merge</button>");
-        page.ShouldContain("&quot;theirs: direct sync&quot;");
+        page.ShouldContain("<h3>src/Program.cs<span class=\"pill resolved\">unresolved</span></h3>");
+        page.ShouldNotContain("conflicts/answer");
+        page.ShouldNotContain("<h4>master</h4>");
     }
 
     [Fact]
-    public void Conflicts_ResolvedPathsDropTheirForms()
+    public void Conflicts_EmptyHistoryFallsBackToAllClear()
     {
-        _store.Resolve("feature-ui", "src/Program.cs", "drop");
-        var scene = _store.GetConflicts("feature-ui")!;
+        var page = UiPages.Conflicts("docs-mirror", null, new UiSyncRunner("/nonexistent"));
 
-        var page = UiPages.Conflicts(scene);
-
-        page.ShouldContain(">drop</span>");
+        page.ShouldContain("no conflicts recorded");
     }
 }

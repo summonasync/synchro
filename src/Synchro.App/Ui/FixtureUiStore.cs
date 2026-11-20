@@ -13,14 +13,20 @@ internal sealed class FixtureUiStore : IUiStore
         _slaves =
         [
             new("feature-ui", "~/repos/synchro-slave-ui", "feature-sync", "main",
-                "in sync · 14 events", new InboxView("pending", "feature-sync", 3, "pull at 08:04 utc"),
-                false),
+                "in sync · 14 events",
+                new InboxView("pending", "feature-sync", 3, null),
+                new InboxView("open", "feature-sync", 0, null),
+                false, "2026-11-20 08:04:00Z master → slave — 3 file(s), no conflicts"),
             new("docs-mirror", "~/repos/synchro-slave-docs", "docs-sync", "main",
-                "in sync · 6 events", new InboxView("clean", null, 0, "push at 07:41 utc"),
-                false),
+                "in sync · 6 events",
+                new InboxView("clean", "main", 0, null),
+                new InboxView("clean", "main", 0, null),
+                false, "2026-11-20 07:41:00Z slave → master — 4 file(s), no conflicts"),
             new("scratch-lab", "~/repos/synchro-slave-lab", "feature-sync", "develop",
-                "re-syncing · 2 events", new InboxView("pending", "feature-sync", 1, "pull at 08:11 utc"),
-                true),
+                "re-syncing · 2 events",
+                new InboxView("pending", "feature-sync", 1, null),
+                new InboxView("missing", null, 0, null),
+                true, "2026-11-20 08:11:00Z slave → master — 2 file(s), 1 conflict(s): lab/settings.json (slave wins)"),
         ];
 
         _history["feature-ui"] =
@@ -67,25 +73,4 @@ internal sealed class FixtureUiStore : IUiStore
         _conflicts.TryGetValue(slaveName, out var paths)
             ? new SlaveConflictView(slaveName, paths)
             : null;
-
-    public void Resolve(string slaveName, string path, string op)
-    {
-        if (op is not ("drop" or "replace" or "merge"))
-        {
-            return;
-        }
-
-        if (!_conflicts.TryGetValue(slaveName, out var paths))
-        {
-            return;
-        }
-
-        var index = paths.FindIndex(p => p.Path == path);
-        if (index < 0)
-        {
-            return;
-        }
-
-        paths[index] = paths[index] with { Resolution = op };
-    }
 }

@@ -23,13 +23,14 @@ public class ApplyGitTests
         string? peerKnown = null,
         string? peerHead = null,
         StoreState? from = null) => (from ?? new StoreState
-    {
-        SchemaVersion = 1,
-        Channel = new ChannelConfig { Name = "slurpy", Peer = "shiva", Mode = SyncMode.Git },
-        Ledger = [],
-        AppliedFileHashes = [],
-        AppliedContents = []
-    }) with { PeerKnownLocalPosition = peerKnown, PeerHeadPosition = peerHead };
+        {
+            SchemaVersion = 1,
+            Channel = new ChannelConfig { Name = "slurpy", Peer = "shiva", Mode = SyncMode.Git },
+            Ledger = [],
+            AppliedFileHashes = [],
+            AppliedContents = []
+        }) with
+        { PeerKnownLocalPosition = peerKnown, PeerHeadPosition = peerHead };
 
     private static string PackGit(string repo, StoreState state, bool full, byte[] key, string outPath)
     {

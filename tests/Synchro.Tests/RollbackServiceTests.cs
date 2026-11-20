@@ -111,15 +111,83 @@ public class RollbackServiceTests
         try
         {
             TestGitRepo.Commit(repo, "seed.txt", "seed\n", "seed");
+            InFlightMarker.Set(MarkerPath(repo));
 
             var report = Rollback(repo);
 
             report.RolledBack.ShouldBeFalse();
             report.Branch.ShouldBe("main");
             CurrentBranch(repo).ShouldBe("main");
+            InFlightMarker.Exists(MarkerPath(repo)).ShouldBeFalse();
         }
         finally
         {
+            Directory.Delete(repo, true);
+        }
+    }
+
+    [Fact]
+    public void Rollback_CleanSyncBranchWithoutCommits_ChecksOutBaseAndClearsMarker()
+    {
+        var repo = Repo();
+        try
+        {
+            TestGitRepo.Commit(repo, "seed.txt", "seed\n", "seed");
+            GitCli.Run(repo, "checkout", "-b", "feature-sync");
+            InFlightMarker.Set(MarkerPath(repo));
+
+            var report = Rollback(repo);
+
+            report.RolledBack.ShouldBeFalse();
+            report.Branch.ShouldBe("main");
+            CurrentBranch(repo).ShouldBe("main");
+            GitCli.StatusPorcelain(repo).ShouldBe("");
+            CommitCount(repo).ShouldBe("1");
+            InFlightMarker.Exists(MarkerPath(repo)).ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(repo, true);
+        }
+    }
+
+    [Fact]
+    public void Rollback_UndeletableUntrackedDirectory_ProducesPartialReport()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var repo = Repo();
+        try
+        {
+            TestGitRepo.Commit(repo, "seed.txt", "seed\n", "seed");
+            Land(repo,
+                LandingChange.WriteFile("stuck/inner.txt", "undeletable\n"),
+                LandingChange.WriteFile("free.txt", "removable\n"));
+            File.SetAttributes(Path.Combine(repo, "stuck"), FileAttributes.ReadOnly);
+
+            var report = Rollback(repo);
+
+            report.RolledBack.ShouldBeTrue();
+            report.Branch.ShouldBe("main");
+            report.RemovedPaths.ShouldBe(new[] { "free.txt" });
+            report.Skipped.ShouldHaveSingleItem().Path.ShouldBe("stuck/");
+            report.Skipped[0].Reason.ShouldNotBeEmpty();
+
+            CurrentBranch(repo).ShouldBe("main");
+            File.Exists(Path.Combine(repo, "stuck", "inner.txt")).ShouldBeTrue();
+            GitCli.StatusPorcelain(repo).ShouldContain("?? stuck/");
+        }
+        finally
+        {
+            var stuck = Path.Combine(repo, "stuck");
+            if (Directory.Exists(stuck))
+            {
+                File.SetAttributes(stuck, FileAttributes.Normal);
+            }
+
             Directory.Delete(repo, true);
         }
     }

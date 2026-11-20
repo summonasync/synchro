@@ -16,7 +16,7 @@ public static class RollbackService
         var branch = currentOk.Value;
         if (branch == slave.BaseBranch)
         {
-            return OnBaseBranch(receivingRoot, slave);
+            return OnBaseBranch(receivingRoot, storeRoot, slave);
         }
 
         if (branch != slave.SyncBranch)
@@ -28,7 +28,7 @@ public static class RollbackService
         return DiscardInbox(receivingRoot, storeRoot, slave);
     }
 
-    private static Result<RollbackReport> OnBaseBranch(string receivingRoot, SlaveConfig slave)
+    private static Result<RollbackReport> OnBaseBranch(string receivingRoot, string storeRoot, SlaveConfig slave)
     {
         var state = ReceivingGit.State(receivingRoot);
         if (state is not Result<WorktreeState>.Ok stateOk)
@@ -41,6 +41,8 @@ public static class RollbackService
             return new Result<RollbackReport>.Fail(SyncError.Conflict(
                 $"working tree on '{slave.BaseBranch}' carries uncommitted non-sync changes — nothing to roll back; resolve them first"));
         }
+
+        InFlightMarker.Clear(InFlightMarker.PathFor(storeRoot, slave.Name));
 
         return new Result<RollbackReport>.Ok(new RollbackReport
         {
@@ -62,24 +64,31 @@ public static class RollbackService
         var worktree = stateOk.Value;
         if (worktree.IsClean)
         {
-            return new Result<RollbackReport>.Fail(SyncError.Conflict(
-                $"nothing dirty to discard on '{slave.SyncBranch}' — the inbox was committed, so the rollback window is closed; undo it with 'git revert' on '{slave.SyncBranch}'"));
+            return NothingToDiscard(receivingRoot, storeRoot, slave);
         }
 
         var removed = new List<string>();
+        var skipped = new List<RollbackReport.SkippedRemoval>();
         foreach (var path in worktree.Untracked)
         {
-            if (path.EndsWith('/'))
+            try
             {
-                Directory.Delete(Path.Combine(receivingRoot, path.TrimEnd('/')), recursive: true);
-            }
-            else
-            {
-                File.Delete(Path.Combine(receivingRoot, path.Replace('/', Path.DirectorySeparatorChar)));
-                ReceivingGit.PruneEmptyParents(receivingRoot, path);
-            }
+                if (path.EndsWith('/'))
+                {
+                    Directory.Delete(Path.Combine(receivingRoot, path.TrimEnd('/')), recursive: true);
+                }
+                else
+                {
+                    File.Delete(Path.Combine(receivingRoot, path.Replace('/', Path.DirectorySeparatorChar)));
+                    ReceivingGit.PruneEmptyParents(receivingRoot, path);
+                }
 
-            removed.Add(path);
+                removed.Add(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                skipped.Add(new RollbackReport.SkippedRemoval(path, ex.Message));
+            }
         }
 
         var discardError = ReceivingGit.DiscardAll(receivingRoot);
@@ -101,7 +110,45 @@ public static class RollbackService
             RolledBack = true,
             Branch = slave.BaseBranch,
             RestoredPaths = worktree.TrackedDirty,
-            RemovedPaths = removed
+            RemovedPaths = removed,
+            Skipped = skipped
+        });
+    }
+
+    private static Result<RollbackReport> NothingToDiscard(string receivingRoot, string storeRoot, SlaveConfig slave)
+    {
+        var syncTip = ReceivingGit.BranchTip(receivingRoot, slave.SyncBranch);
+        if (syncTip is not Result<string>.Ok syncOk)
+        {
+            return new Result<RollbackReport>.Fail(((Result<string>.Fail)syncTip).Error);
+        }
+
+        var baseTip = ReceivingGit.BranchTip(receivingRoot, slave.BaseBranch);
+        if (baseTip is not Result<string>.Ok baseOk)
+        {
+            return new Result<RollbackReport>.Fail(((Result<string>.Fail)baseTip).Error);
+        }
+
+        if (syncOk.Value != baseOk.Value)
+        {
+            return new Result<RollbackReport>.Fail(SyncError.Conflict(
+                $"nothing dirty to discard on '{slave.SyncBranch}' — the inbox was committed, so the rollback window is closed; undo it with 'git revert' on '{slave.SyncBranch}'"));
+        }
+
+        var checkout = ReceivingGit.Checkout(receivingRoot, slave.BaseBranch);
+        if (checkout is not Result<string>.Ok)
+        {
+            return new Result<RollbackReport>.Fail(((Result<string>.Fail)checkout).Error);
+        }
+
+        InFlightMarker.Clear(InFlightMarker.PathFor(storeRoot, slave.Name));
+
+        return new Result<RollbackReport>.Ok(new RollbackReport
+        {
+            RolledBack = false,
+            Branch = slave.BaseBranch,
+            RestoredPaths = [],
+            RemovedPaths = []
         });
     }
 }

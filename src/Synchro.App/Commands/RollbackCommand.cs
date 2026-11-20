@@ -9,6 +9,19 @@ internal static class RollbackCommand
 {
     public static int Run(string[] args)
     {
+        var parsed = RollbackArgs.Parse(args);
+        if (parsed is not Result<RollbackArgs>.Ok parsedOk)
+        {
+            Console.Error.WriteLine(((Result<RollbackArgs>.Fail)parsed).Error.Message);
+            return 2;
+        }
+
+        if (parsedOk.Value.WantsHelp)
+        {
+            Console.WriteLine(RollbackArgs.Usage);
+            return 0;
+        }
+
         var root = Directory.GetCurrentDirectory();
         if (!Directory.Exists(StorePaths.Folder(root)) || !StoreInitializer.TryLoadKey(root, out var key))
         {
@@ -23,7 +36,7 @@ internal static class RollbackCommand
             return 1;
         }
 
-        var slaveName = args.FirstOrDefault(a => !a.StartsWith("--"));
+        var slaveName = parsedOk.Value.SlaveName;
         var resolved = ResolveSlave(state.Value, slaveName);
         if (resolved is not Result<SlaveConfig>.Ok slaveOk)
         {
@@ -31,15 +44,14 @@ internal static class RollbackCommand
             return slaveName is null ? 2 : 1;
         }
 
-        var slave = slaveOk.Value;
-        var receivingRoot = ResolveReceivingRoot(root, slave);
-        if (receivingRoot is null)
+        var receiver = RollbackReceiver.Resolve(root, slaveOk.Value, parsedOk.Value.PreferMaster);
+        if (receiver is not Result<string>.Ok receiverOk)
         {
-            Console.Error.WriteLine($"slave folder is missing: '{slave.Root}'");
+            Console.Error.WriteLine($"rollback failed: {((Result<string>.Fail)receiver).Error.Message}");
             return 1;
         }
 
-        var report = RollbackService.Rollback(receivingRoot, root, slave);
+        var report = RollbackService.Rollback(receiverOk.Value, root, slaveOk.Value);
         if (report is not Result<RollbackReport>.Ok ok)
         {
             Console.Error.WriteLine($"rollback failed: {((Result<RollbackReport>.Fail)report).Error.Message}");
@@ -54,7 +66,8 @@ internal static class RollbackCommand
         }
 
         Console.WriteLine(
-            $"rollback: back on '{value.Branch}' — {value.RestoredPaths.Count} restored, {value.RemovedPaths.Count} removed");
+            $"rollback: back on '{value.Branch}' — {value.RestoredPaths.Count} restored, {value.RemovedPaths.Count} removed"
+            + (value.Skipped.Count > 0 ? $", {value.Skipped.Count} blocked" : string.Empty));
         foreach (var path in value.RestoredPaths)
         {
             Console.WriteLine($"  restored: {path}");
@@ -63,6 +76,11 @@ internal static class RollbackCommand
         foreach (var path in value.RemovedPaths)
         {
             Console.WriteLine($"  removed: {path}");
+        }
+
+        foreach (var skipped in value.Skipped)
+        {
+            Console.WriteLine($"  blocked: {skipped.Path} — {skipped.Reason}");
         }
 
         return 0;
@@ -84,16 +102,5 @@ internal static class RollbackCommand
             _ => new Result<SlaveConfig>.Fail(SyncError.Invalid(
                 $"several slaves registered ({string.Join(", ", slaves.Select(s => s.Name))}) — pass one"))
         };
-    }
-
-    private static string? ResolveReceivingRoot(string masterRoot, SlaveConfig slave)
-    {
-        var masterBranch = ReceivingGit.CurrentBranch(masterRoot);
-        if (masterBranch is Result<string>.Ok branch && branch.Value == slave.SyncBranch)
-        {
-            return masterRoot;
-        }
-
-        return Directory.Exists(slave.Root) ? slave.Root : null;
     }
 }

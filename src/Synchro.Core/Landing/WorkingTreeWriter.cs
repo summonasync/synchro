@@ -20,6 +20,12 @@ public static class WorkingTreeWriter
             return new Result<LandingEdits>.Fail(pathError);
         }
 
+        var renameError = ValidateRenames(changes);
+        if (renameError is not null)
+        {
+            return new Result<LandingEdits>.Fail(renameError);
+        }
+
         var written = new List<string>();
         var deleted = new List<string>();
 
@@ -68,6 +74,13 @@ public static class WorkingTreeWriter
         LandingChange.Delete delete => [delete.Path],
         _ => []
     };
+
+    private static SyncError? ValidateRenames(IReadOnlyList<LandingChange> changes) =>
+        changes
+            .OfType<LandingChange.Rename>()
+            .Where(rename => rename.From == rename.To)
+            .Select(rename => SyncError.Invalid($"rename source and target are the same path: '{rename.From}'"))
+            .FirstOrDefault();
 
     private static void WriteContent(string root, string path, byte[] content)
     {

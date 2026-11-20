@@ -22,6 +22,14 @@ public static class ReceivingGit
     public static bool BranchExists(string root, string name) =>
         GitRunner.Run(root, "rev-parse", "--verify", "--quiet", $"refs/heads/{name}").Ok;
 
+    public static Result<string> BranchTip(string root, string name)
+    {
+        var result = GitRunner.Run(root, "rev-parse", "--verify", "--quiet", $"refs/heads/{name}");
+        return result.Ok
+            ? new Result<string>.Ok(result.StdOut.Trim())
+            : new Result<string>.Fail(SyncError.Invalid($"branch '{name}' not found in '{root}'"));
+    }
+
     public static Result<string> CreateBranch(string root, string name, string from)
     {
         var result = GitRunner.Run(root, "checkout", "-b", name, from);

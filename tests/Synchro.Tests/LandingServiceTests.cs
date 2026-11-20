@@ -197,6 +197,30 @@ public class LandingServiceTests
     }
 
     [Fact]
+    public void Land_SelfRename_FailsBeforeWritingAnything()
+    {
+        var repo = Repo();
+        try
+        {
+            TestGitRepo.Commit(repo, "seed.txt", "seed\n", "seed");
+
+            LandFails(repo,
+                    LandingChange.WriteFile("healthy.txt", "should never land\n"),
+                    LandingChange.RenameFile("seed.txt", "seed.txt", "rewritten in place\n"))
+                .ShouldContain("same path");
+
+            GitCli.StatusPorcelain(repo).ShouldBe("");
+            File.ReadAllText(Path.Combine(repo, "seed.txt")).ShouldBe("seed\n");
+            File.Exists(Path.Combine(repo, "healthy.txt")).ShouldBeFalse();
+            InFlightMarker.Exists(MarkerPath(repo)).ShouldBeFalse();
+        }
+        finally
+        {
+            Directory.Delete(repo, true);
+        }
+    }
+
+    [Fact]
     public void Land_PathEscape_FailsAndClearsMarker()
     {
         var repo = Repo();

@@ -147,6 +147,31 @@ public class WindowsInstallPlatformTests
     }
 
     [Fact]
+    public void Uninstall_AfterEngineInstallWithManifest_RemovesProgramFolder()
+    {
+        var home = new InstallTestHome();
+        try
+        {
+            var platform = home.Windows(Store());
+            var source = Source(home, "windows bits");
+            var engine = new InstallEngine(platform);
+
+            engine.Install(new InstallRequest { SourcePath = source, Version = "1.0.0" })
+                .ShouldBeOfType<Result<InstallReport>.Ok>();
+            File.Exists(InstallManifest.PathFor(home.WindowsRoot)).ShouldBeTrue();
+
+            var outcome = engine.Uninstall().ShouldBeOfType<Result<UninstallReport>.Ok>().Value;
+
+            outcome.BinaryRemoved.ShouldBeTrue();
+            Directory.Exists(home.WindowsRoot).ShouldBeFalse();
+        }
+        finally
+        {
+            InstallTestHome.Delete(home);
+        }
+    }
+
+    [Fact]
     public void Uninstall_WhenNothingInstalled_ReportsNothing()
     {
         var home = new InstallTestHome();

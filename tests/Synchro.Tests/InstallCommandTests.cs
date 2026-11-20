@@ -218,6 +218,7 @@ public class InstallCommandTests
             result.ExitCode.ShouldBe(0);
             result.Output.ShouldContain($"installed: synchro 0.2.0 -> {Path.Combine(home.WindowsRoot, "synchro.exe")}");
             result.Output.ShouldContain("PATH updated — open a new terminal to pick it up");
+            pathStore.Value.ShouldNotBeNull();
             pathStore.Value.ShouldContain(home.WindowsRoot);
             File.Exists(Path.Combine(home.WindowsRoot, "synchro.exe")).ShouldBeTrue();
         }

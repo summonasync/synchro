@@ -102,7 +102,7 @@ public class UninstallCommandTests
             result.Output.ShouldContain("already open terminals keep resolving synchro until restarted");
             pathStore.Value.ShouldBe("C:\\Tools");
             File.Exists(Path.Combine(home.WindowsRoot, "synchro.exe")).ShouldBeFalse();
-            result.Output.ShouldContain("installation folder could not be fully removed");
+            Directory.Exists(home.WindowsRoot).ShouldBeFalse();
         }
         finally
         {

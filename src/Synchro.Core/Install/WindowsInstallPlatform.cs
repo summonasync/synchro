@@ -102,7 +102,7 @@ public sealed class WindowsInstallPlatform : IInstallPlatform
 
             if (Directory.Exists(Root))
             {
-                Directory.Delete(Root, recursive: false);
+                Directory.Delete(Root, recursive: true);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

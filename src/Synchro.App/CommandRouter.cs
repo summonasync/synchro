@@ -7,7 +7,7 @@ namespace Synchro.App;
 internal static class CommandRouter
 {
     private static readonly string[] KnownCommands =
-        ["add", "init", "pack", "apply", "scene", "rollback", "sync", "status", "log", "serve"];
+        ["add", "init", "pack", "apply", "scene", "rollback", "sync", "status", "log", "install", "uninstall", "serve"];
 
     public static int Run(string[] args)
     {
@@ -42,6 +42,8 @@ internal static class CommandRouter
             "serve" => ServerHost.Run(args[1..]),
             "status" => StatusCommand.Run(args[1..]),
             "log" => LogCommand.Run(args[1..]),
+            "install" => InstallCommand.Run(args[1..]),
+            "uninstall" => UninstallCommand.Run(args[1..]),
             _ => WriteUnknown(command)
         };
     }
@@ -56,6 +58,8 @@ internal static class CommandRouter
         Console.WriteLine("apply <package>       apply a sealed package (stages conflicts into a scene)");
         Console.WriteLine("scene [resolve|commit] work the pending conflict scene");
         Console.WriteLine("rollback [<slave>]    discard the sync inbox and return to the base branch");
+        Console.WriteLine("install [options]     install the running binary as the 'synchro' command (--path-fix, --force)");
+        Console.WriteLine("uninstall             remove the installed binary, its command name and PATH entries");
         Console.WriteLine("sync [<slave>] [--yes] bidirectional sync with a slave (master wins conflicts by default)");
         Console.WriteLine("status [<slave>]      per-slave config, ledger hints, inbox state");
         Console.WriteLine("log [<slave>]         sync history, newest first");

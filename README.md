@@ -18,7 +18,7 @@ flies repo-to-repo over a local path — feature-level, bidirectional, with
 nothing left on the receiving machine.*
 
 `await SummonAsync();` — part of the summoner's kit  
-overmind · grimoire · squeezr · **▸ synchro** · mindlash studio
+overmind · grimoire · squeezr · **▸ synchro** · summonasync studio
 
 ---
 
@@ -225,4 +225,4 @@ command attached. One seal, two ways in.
 ---
 
 `await SummonAsync();` — part of the summoner's kit  
-overmind · grimoire · squeezr · **▸ synchro** · mindlash studio
+overmind · grimoire · squeezr · **▸ synchro** · summonasync studio
